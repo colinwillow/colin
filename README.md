@@ -124,8 +124,8 @@ porting when the voice comes over, not before.
   `loadCharacter` measures the bind pose and fits it to `height` (1.75 m), then
   drops his feet to `y = 0` and centres him over `root.position`. A different
   body file can be dropped in without retuning anything.
-- **Lit only by the probe**, at `envMapIntensity = 1` against the room's 0.25.
-  There are still no real-time lights, for the reason in the section above.
+- **Lit by the probe plus a rig of his own.** See below — the room still has no
+  real-time lights.
 - **Contact shadow, not a cast shadow.** A soft ellipse on the floor, multiply
   blended so it darkens the floor's baked light rather than laying grey over it.
   Multiply ignores alpha, so the texture is opaque and fades to *white*; fading to
@@ -137,6 +137,53 @@ porting when the voice comes over, not before.
 The Colin folder in the tuning panel switches clip, turns him, and adjusts his
 brightness and shadow. From the console he is `window.colin` —
 `colin.play('idle_waving')`, `colin.clips`, `colin.root.position`.
+
+### Why he looks dark, and how he is lit
+
+He is lit correctly by the HDR and always was. The probe was rendered from
+`(-0.3, 1.1, 1.7)` — the spot he stands on — so it is a physically accurate
+capture of the light arriving there, and `envMapIntensity = 1` is the right
+number, not a low one. Measured, the probe's mean radiance is 0.553, which puts a
+white surface under it at 0.553 against the room's baked 0.63 (median) to 1.06
+(mean). He is not being starved of light.
+
+What is dark is **his texture**. His atlas has a mean albedo of 0.0065; even
+inside the 17.5% of it that is actually used, the median is 0.0026. The hoodie and
+jeans are near-black. A 0.01-albedo surface under correct light renders at about
+0.005 — physically right, and a black hole next to a bright pastel room. No amount
+of *diffuse* light fixes that: doubling the light on a black hoodie gives twice
+almost nothing. Black cloth reads through its **specular edge**, which is why the
+rig leans on a rim light.
+
+So he gets three directional lights following the room — key from the window wall
+at `-x`, a cool bounce from the doorway at `+x`, and a rim from behind to lift him
+off the stove.
+
+**Those lights cannot live in the kitchen scene.** The room's light is baked, so a
+light there would fall on walls that are already lit and roughly double their
+brightness. three has no way to aim a light at one object either — it filters
+lights by the *camera's* layers, not per object, so a light on its own layer is
+excluded outright rather than applied selectively. The isolation comes from the
+render loop instead:
+
+```js
+renderer.autoClear = false;
+renderer.clear();
+renderer.render(scene, camera);            // the baked room, no lights
+renderer.render(characterScene, camera);   // Colin, lit by his own rig
+```
+
+Two scenes, one camera, one depth buffer. His lights physically cannot reach the
+room, he is still correctly occluded by the furniture, and his contact shadow
+still multiplies against the floor drawn in the first pass. `characterScene.environment`
+is the same probe, so the room's own light still reaches him.
+
+The **Colin — lighting** folder in the panel has the handles. `HDR probe` is his
+`envMapIntensity`; `key`/`fill`/`rim` are the three lights. The last two matter
+most given the albedo: `roughness` decides how much specular edge he catches (the
+model ships at 0.9, very matte), and `albedo lift` multiplies his base colour
+above 1, which is the only thing that actually makes the black cloth lighter
+rather than shinier.
 
 ## Coordinates
 

@@ -27,6 +27,8 @@ export interface Character {
   measuredHeight: number;
   /** 0 = no contact shadow, 1 = full. */
   setShadowStrength: (strength: number) => void;
+  /** His standard materials, for tuning brightness and roughness. */
+  materials: THREE.MeshStandardMaterial[];
 }
 
 export interface LoadCharacterOptions {
@@ -73,6 +75,7 @@ export async function loadCharacter(
   model.position.z -= centre.z;
   model.position.y -= fitted.min.y;
 
+  const materials: THREE.MeshStandardMaterial[] = [];
   model.traverse((o) => {
     const mesh = o as THREE.Mesh;
     if (!mesh.isMesh) return;
@@ -81,7 +84,9 @@ export async function loadCharacter(
     mesh.frustumCulled = false;
     for (const m of [].concat(mesh.material as never) as THREE.Material[]) {
       const std = m as THREE.MeshStandardMaterial;
-      if (std.isMeshStandardMaterial) std.envMapIntensity = envMapIntensity;
+      if (!std.isMeshStandardMaterial) continue;
+      std.envMapIntensity = envMapIntensity;
+      materials.push(std);
     }
   });
 
@@ -109,10 +114,49 @@ export async function loadCharacter(
   if (first) play(first, 0);
 
   return {
-    root, model, mixer, clips, play, measuredHeight,
+    root, model, mixer, clips, play, measuredHeight, materials,
     setShadowStrength: shadow.setStrength,
     update: (dt) => mixer.update(dt),
   };
+}
+
+export interface CharacterLights {
+  group: THREE.Group;
+  key: THREE.DirectionalLight;
+  fill: THREE.DirectionalLight;
+  rim: THREE.DirectionalLight;
+}
+
+/**
+ * A small rig that lights only Colin.
+ *
+ * These lights CANNOT live in the kitchen scene. The room's light is baked into
+ * its lightmaps, so a light there would fall on walls that are already lit and
+ * roughly double their brightness. three offers no way to aim a light at one
+ * object either — it filters lights by the *camera's* layers, not per object —
+ * so the isolation comes from rendering him in a second pass instead.
+ *
+ * Directions follow the room so he sits in it: key from the window wall at -x,
+ * a cool bounce from the doorway at +x, and a rim from behind to lift his
+ * silhouette off the stove. The rim matters most: his hoodie is near-black
+ * (albedo ~0.01), and no amount of diffuse light brightens that. What makes
+ * black cloth read is the specular edge.
+ */
+export function createCharacterLights(): CharacterLights {
+  const group = new THREE.Group();
+  group.name = 'CharacterLights';
+
+  const key = new THREE.DirectionalLight(0xfff1de, 2.2);   // warm, window side
+  key.position.set(-3, 2.6, 2.2);
+
+  const fill = new THREE.DirectionalLight(0xdCe8ff, 0.8);  // cool, doorway side
+  fill.position.set(2.5, 1.6, 1.5);
+
+  const rim = new THREE.DirectionalLight(0xffffff, 3.0);   // behind, for the edge
+  rim.position.set(0.8, 2.4, -2.0);
+
+  group.add(key, key.target, fill, fill.target, rim, rim.target);
+  return { group, key, fill, rim };
 }
 
 /**

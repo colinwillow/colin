@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import GUI from 'three/addons/libs/lil-gui.module.min.js';
 import { loadKitchen, addCameraSway, type SwayConfig } from './kitchenEnvironment';
-import { loadCharacter, type Character } from './character';
+import { loadCharacter, createCharacterLights, type Character, type CharacterLights } from './character';
 
 /** On the rug in front of the stove, where the HDR probe was rendered. */
 export const CHARACTER_SPOT = new THREE.Vector3(-0.3, 0, 1.7);
@@ -36,7 +36,17 @@ try {
   label.textContent = 'Loading Colin';
   const colin = await loadCharacter('/character/colin_slim.glb', { height: 1.75 });
   colin.root.position.copy(CHARACTER_SPOT);
-  scene.add(colin.root);
+
+  // Colin lives in his own scene, drawn in a second pass over the same depth
+  // buffer. That is what lets him have lights at all: the room's light is baked,
+  // so a light in the kitchen scene would fall on walls that are already lit.
+  // Sharing the depth buffer keeps him correctly occluded by the furniture, and
+  // his contact shadow still multiplies against the floor drawn in pass one.
+  const characterScene = new THREE.Scene();
+  characterScene.environment = kitchen.envMap;   // same probe, so he matches the room
+  characterScene.add(colin.root);
+  const rig = createCharacterLights();
+  characterScene.add(rig.group);
 
   const sway: SwayConfig = { maxDeg: 2.5 };
   const updateSway = addCameraSway(camera, window, sway);
@@ -50,13 +60,16 @@ try {
   window.addEventListener('resize', resize);
 
   const clock = new THREE.Clock();
+  renderer.autoClear = false;
   renderer.setAnimationLoop(() => {
     colin.update(clock.getDelta());
     updateSway();
-    renderer.render(scene, camera);
+    renderer.clear();
+    renderer.render(scene, camera);            // baked room, no lights
+    renderer.render(characterScene, camera);   // Colin, lit by his own rig
   });
 
-  buildTuningPanel(kitchen.manifest.exposure, lightmapped, sway, colin);
+  buildTuningPanel(kitchen.manifest.exposure, lightmapped, sway, colin, rig);
 
   // Debug handles. From the devtools console: kitchen.interactive.Fridge_Door,
   // kitchen.lightmapped[0].lightMapIntensity, new THREE.Raycaster(), ...
@@ -96,6 +109,7 @@ function buildTuningPanel(
   lightmapped: THREE.MeshStandardMaterial[],
   sway: SwayConfig,
   colin: Character,
+  rig: CharacterLights,
 ) {
   const state = {
     exposure,
@@ -124,28 +138,44 @@ function buildTuningPanel(
     .onChange((v: number) => { sway.maxDeg = v; });
   gui.add(state, 'logSettings').name('log settings to console');
 
+  const skin = colin.materials;
   const him = gui.addFolder('Colin');
-  const skin: THREE.MeshStandardMaterial[] = [];
-  colin.model.traverse((o) => {
-    const mesh = o as THREE.Mesh;
-    if (!mesh.isMesh) return;
-    for (const m of [].concat(mesh.material as never) as THREE.Material[]) {
-      const std = m as THREE.MeshStandardMaterial;
-      if (std.isMeshStandardMaterial) skin.push(std);
-    }
-  });
   const pose = {
     clip: colin.clips.find((c) => c.startsWith('idle')) ?? colin.clips[0],
     turn: 0,
-    brightness: skin[0]?.envMapIntensity ?? 1,
     shadow: 1,
   };
   him.add(pose, 'clip', colin.clips).name('animation').onChange((v: string) => colin.play(v));
   him.add(pose, 'turn', -180, 180, 1).name('facing °')
     .onChange((v: number) => { colin.root.rotation.y = THREE.MathUtils.degToRad(v); });
-  him.add(pose, 'brightness', 0, 3, 0.01).name('brightness')
-    .onChange((v: number) => { for (const m of skin) m.envMapIntensity = v; });
   him.add(pose, 'shadow', 0, 1, 0.01).name('contact shadow')
     .onChange((v: number) => colin.setShadowStrength(v));
+
+  const lit = gui.addFolder('Colin — lighting');
+  const light = {
+    probe: skin[0]?.envMapIntensity ?? 1,
+    key: rig.key.intensity,
+    fill: rig.fill.intensity,
+    rim: rig.rim.intensity,
+    // His hoodie and jeans are near-black in the texture (mean albedo 0.0065).
+    // Diffuse light cannot lift that, so these two are the real handles:
+    // roughness decides how much of a specular edge he catches, and lift
+    // multiplies the base colour itself.
+    roughness: skin[0]?.roughness ?? 0.9,
+    lift: 1,
+  };
+  lit.add(light, 'probe', 0, 4, 0.01).name('HDR probe')
+    .onChange((v: number) => { for (const m of skin) m.envMapIntensity = v; });
+  lit.add(light, 'key', 0, 8, 0.05).name('key (window)')
+    .onChange((v: number) => { rig.key.intensity = v; });
+  lit.add(light, 'fill', 0, 8, 0.05).name('fill (doorway)')
+    .onChange((v: number) => { rig.fill.intensity = v; });
+  lit.add(light, 'rim', 0, 12, 0.05).name('rim (behind)')
+    .onChange((v: number) => { rig.rim.intensity = v; });
+  lit.add(light, 'roughness', 0, 1, 0.01).name('roughness')
+    .onChange((v: number) => { for (const m of skin) m.roughness = v; });
+  lit.add(light, 'lift', 1, 6, 0.05).name('albedo lift')
+    .onChange((v: number) => { for (const m of skin) m.color.setScalar(v); });
+  lit.open();
   gui.close();
 }
