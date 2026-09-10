@@ -38,8 +38,10 @@ export const DEFAULT_WANDER: WanderConfig = {
   area: { minX: -1.15, maxX: 0.55, minZ: 1.25, maxZ: 3.6 },
   speed: 0.62,
   turnSpeed: 120,
-  pauseMin: 4,
-  pauseMax: 11,
+  // He was standing 12-13 seconds between two-second walks, which on a phone
+  // means you almost always catch him standing still and conclude he is idle.
+  pauseMin: 2,
+  pauseMax: 5.5,
   maxFacingAwayDeg: 115,
 };
 
@@ -76,12 +78,18 @@ export function createWander(
 
   const chooseTarget = () => {
     const a = config.area;
-    // A few tries to find somewhere far enough away to be worth walking to.
-    for (let i = 0; i < 12; i++) {
+    // Far enough away to be worth walking to: short hops read as fidgeting, and
+    // at 0.62 m/s a half-metre target is over before it registers.
+    let best: THREE.Vector3 | null = null;
+    let bestDistance = 0;
+    for (let i = 0; i < 16; i++) {
       const p = new THREE.Vector3(rand(a.minX, a.maxX), 0, rand(a.minZ, a.maxZ));
-      if (p.distanceTo(colin.root.position) > 0.55) return p;
+      const d = p.distanceTo(colin.root.position);
+      if (d > 1.1) return p;
+      // Nothing far enough: keep the furthest rather than standing there.
+      if (d > bestDistance) { best = p; bestDistance = d; }
     }
-    return null;
+    return bestDistance > 0.5 ? best : null;
   };
 
   const faceOf = (to: THREE.Vector3) => {
@@ -111,7 +119,9 @@ export function createWander(
       const next = chooseTarget();
       if (!next) { wait = 1; return; }
       const yaw = faceOf(next);
-      if (!withinFacingLimit(yaw)) { wait = 0.5; return; }
+      // Retry immediately rather than standing another half second: this was
+      // adding several seconds to pauses that were already too long.
+      if (!withinFacingLimit(yaw)) return;
       target.copy(next);
       facing = yaw;
       phase = 'turning';
