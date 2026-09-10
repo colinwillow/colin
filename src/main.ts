@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import GUI from 'three/addons/libs/lil-gui.module.min.js';
 import { loadKitchen, addCameraSway, type SwayConfig } from './kitchenEnvironment';
+import { loadCharacter, type Character } from './character';
 
 /** On the rug in front of the stove, where the HDR probe was rendered. */
 export const CHARACTER_SPOT = new THREE.Vector3(-0.3, 0, 1.7);
@@ -31,6 +32,12 @@ try {
 
   const { camera, manifest, lightmapped } = kitchen;
 
+  // He faces +z, back to the stove, looking at the camera.
+  label.textContent = 'Loading Colin';
+  const colin = await loadCharacter('/character/colin_slim.glb', { height: 1.75 });
+  colin.root.position.copy(CHARACTER_SPOT);
+  scene.add(colin.root);
+
   const sway: SwayConfig = { maxDeg: 2.5 };
   const updateSway = addCameraSway(camera, window, sway);
 
@@ -42,16 +49,18 @@ try {
   resize();
   window.addEventListener('resize', resize);
 
+  const clock = new THREE.Clock();
   renderer.setAnimationLoop(() => {
+    colin.update(clock.getDelta());
     updateSway();
     renderer.render(scene, camera);
   });
 
-  buildTuningPanel(kitchen.manifest.exposure, lightmapped, sway);
+  buildTuningPanel(kitchen.manifest.exposure, lightmapped, sway, colin);
 
   // Debug handles. From the devtools console: kitchen.interactive.Fridge_Door,
   // kitchen.lightmapped[0].lightMapIntensity, new THREE.Raycaster(), ...
-  Object.assign(window, { kitchen, THREE });
+  Object.assign(window, { kitchen, colin, THREE });
 
   loading.classList.add('done');
   document.body.classList.add('ready');
@@ -65,6 +74,10 @@ try {
     `kitchen ready — camera "${camera.name}" (${camera.userData.name ?? '?'}), ` +
       `${lightmapped.length} lightmapped materials, ` +
       `exposure ${manifest.exposure}, lightMapIntensity ${manifest.encodeScale}π`,
+  );
+  console.log(
+    `colin ready — measured ${colin.measuredHeight.toFixed(3)}m, fitted to 1.75m, ` +
+      `${colin.clips.length} clips`,
   );
 } catch (err) {
   const message = err instanceof Error ? err.message : String(err);
@@ -82,6 +95,7 @@ function buildTuningPanel(
   exposure: number,
   lightmapped: THREE.MeshStandardMaterial[],
   sway: SwayConfig,
+  colin: Character,
 ) {
   const state = {
     exposure,
@@ -109,5 +123,29 @@ function buildTuningPanel(
     .name('camera sway °')
     .onChange((v: number) => { sway.maxDeg = v; });
   gui.add(state, 'logSettings').name('log settings to console');
+
+  const him = gui.addFolder('Colin');
+  const skin: THREE.MeshStandardMaterial[] = [];
+  colin.model.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    for (const m of [].concat(mesh.material as never) as THREE.Material[]) {
+      const std = m as THREE.MeshStandardMaterial;
+      if (std.isMeshStandardMaterial) skin.push(std);
+    }
+  });
+  const pose = {
+    clip: colin.clips.find((c) => c.startsWith('idle')) ?? colin.clips[0],
+    turn: 0,
+    brightness: skin[0]?.envMapIntensity ?? 1,
+    shadow: 1,
+  };
+  him.add(pose, 'clip', colin.clips).name('animation').onChange((v: string) => colin.play(v));
+  him.add(pose, 'turn', -180, 180, 1).name('facing °')
+    .onChange((v: number) => { colin.root.rotation.y = THREE.MathUtils.degToRad(v); });
+  him.add(pose, 'brightness', 0, 3, 0.01).name('brightness')
+    .onChange((v: number) => { for (const m of skin) m.envMapIntensity = v; });
+  him.add(pose, 'shadow', 0, 1, 0.01).name('contact shadow')
+    .onChange((v: number) => colin.setShadowStrength(v));
   gui.close();
 }

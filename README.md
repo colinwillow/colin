@@ -19,12 +19,12 @@ Open the panel in the top-right corner to tune the lighting knobs live.
 
 ## Status
 
-**Milestone 1 — the room renders.** The baked kitchen loads from the wide
-reference camera with mouse sway, matching the Blender framing. Nothing is
-interactive yet.
+**Milestone 1 — the room renders, and Colin is standing in it.** The baked
+kitchen loads from the wide reference camera with mouse sway, matching the
+Blender framing, and the rigged character stands on the rug in front of the
+stove playing an idle, lit by the same probe. Nothing is interactive yet.
 
-Still to do: drop the character in (`CHARACTER_SPOT` in `src/main.ts` marks the
-spot), then interactions, then voice.
+Still to do: interactions, then the face and voice.
 
 ## Layout
 
@@ -32,6 +32,7 @@ spot), then interactions, then voice.
 index.html                      loading overlay + canvas
 src/main.ts                     renderer, resize, render loop, tuning panel
 src/kitchenEnvironment.ts       loads the GLB, wires up lightmaps and the HDR probe
+src/character.ts                loads Colin, fits him to height, contact shadow
 public/kitchen/                 the baked assets, served verbatim
   kitchen_room_02.glb           the room: 82 meshes, Draco + WebP
   kitchen_lightmaps.json        manifest: atlases, mesh->atlas map, exposure, interactive names
@@ -40,6 +41,8 @@ public/kitchen/                 the baked assets, served verbatim
   lightmaps/LM_Cabinetry.webp   cabinets, counters, shelves, stove, table
   lightmaps/LM_Props.webp       pottery, plants, books, jars
   lightmaps/LM_Interactive.webp the movable objects, baked at rest position
+public/character/
+  colin_slim.glb                the rigged character, from colinwillow/glorp
 scripts/screenshot.mjs          optional headless render check (see below)
 ```
 
@@ -103,6 +106,37 @@ Read this before changing any materials or adding lights.
 - **Tone mapping** is `AgXToneMapping` with exposure around 0.55, to match
   Blender's AgX view and -0.85 exposure. Output color space is sRGB.
 - **Glass** gets `depthWrite = false`.
+
+## The character
+
+`colin_slim.glb` comes from the Orb/glorp project. Of the figures there it is the
+only self-contained one: a single mesh, its texture embedded, 82 joints, and 36
+animation clips (`idle_neutral_00..03`, `idle_happy_bob`, `idle_waving`, walks,
+runs, dances). The other bodies — `colin_anim2`, `colin_animations_02` — export
+with no texture at all and need their skin supplied from glorp's
+`images/textures/`, plus `colin_head.glb` grafted on at the head joint for a face
+with blendshapes. That graft is what the viseme work will need, and is worth
+porting when the voice comes over, not before.
+
+- **Fitted, not scaled by a constant.** The rig arrives in centimetres under a
+  root scaled by 0.01 and turned a quarter turn, and it is skinned, so its own
+  numbers say little about final height — he measures 5.467 units in bind pose.
+  `loadCharacter` measures the bind pose and fits it to `height` (1.75 m), then
+  drops his feet to `y = 0` and centres him over `root.position`. A different
+  body file can be dropped in without retuning anything.
+- **Lit only by the probe**, at `envMapIntensity = 1` against the room's 0.25.
+  There are still no real-time lights, for the reason in the section above.
+- **Contact shadow, not a cast shadow.** A soft ellipse on the floor, multiply
+  blended so it darkens the floor's baked light rather than laying grey over it.
+  Multiply ignores alpha, so the texture is opaque and fades to *white*; fading to
+  transparent would multiply the floor by zero and stamp a black square around
+  him. It sits at `y = 0.02` to clear the rug, which was hiding it.
+- **`frustumCulled = false`** on his meshes: skinned bounds are computed for the
+  bind pose, so a raised arm can leave the box and pop out mid-animation.
+
+The Colin folder in the tuning panel switches clip, turns him, and adjusts his
+brightness and shadow. From the console he is `window.colin` —
+`colin.play('idle_waving')`, `colin.clips`, `colin.root.position`.
 
 ## Coordinates
 
@@ -236,25 +270,22 @@ npm run screenshot -- http://127.0.0.1:4173/ shot.png 1500x1000
 
 ## Later milestones
 
-1. **The character.** Bring `colin_slim.glb` (and the animation GLBs) over from
-   `colinwillow/glorp`. Place him at `CHARACTER_SPOT` facing `+z` toward the
-   camera, play an idle animation, and add a contact shadow — not a
-   shadow-casting light.
-2. **Mobile GPU memory.** Download size is already handled (Draco + WebP, ~14 MB).
+1. **Mobile GPU memory.** Download size is already handled (Draco + WebP, ~14 MB).
    WebP only shrinks the download, though: a 4K texture still takes about 64 MB of
    GPU memory once decoded, and there are several. For phones, convert textures to
    KTX2 (Basis Universal) with gltf-transform, which stays compressed on the GPU,
    and consider 2K versions of the 4K textures and lightmaps. Keep lightmaps in
    sRGB and update the manifest if their format changes.
-3. **Interactions.** Sit anchors on the chairs, door hinge animations for the
+2. **Interactions.** Sit anchors on the chairs, door hinge animations for the
    fridge and oven, pick-up targets for the pot, lid, mug, and pans, and pathing
    for the character.
-4. **Light switch.** Colin can bake a second lightmap set with the lights off.
+3. **Light switch.** Colin can bake a second lightmap set with the lights off.
    Crossfade between the two sets in a shader, or by swapping textures while
    fading intensity, and dim the pendant bulb's emissive at the same time.
-5. **Voice and visemes.** Bring over the talking-character setup from glorp: the
+4. **The face, voice and visemes.** Bring over the talking-character setup from
+   glorp: `colin_head.glb` (92 morph targets) grafted at the head joint, the
    Cloudflare Worker in `worker/` (Claude brain + ElevenLabs voice clone,
-   `persona-colin.md`) and the viseme rig. API tokens will need reconnecting.
+   `persona-colin.md`), and the viseme rig. API tokens will need reconnecting.
 
 ## Source files (Colin's machine)
 
