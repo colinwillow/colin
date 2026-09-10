@@ -85,6 +85,8 @@ try {
   // renderer where the character pass would overwrite it.
   const roomExposure = { value: kitchen.manifest.exposure };
 
+  if (settings.lensMm !== undefined) kitchen.framing.referenceFov = fovForLens(settings.lensMm);
+
   // Off on touch: pointermove only fires there while a finger is down, so the
   // camera would jump on tap instead of breathing.
   const sway: SwayConfig = { maxDeg: settings.sway ? 2.5 : 0 };
@@ -144,7 +146,8 @@ try {
   setTimeout(drop, 1500);
   console.log(
     `quality "${quality}" (${reason}) — ${settings.manifest}, ` +
-      `pixelRatio ${renderer.getPixelRatio()}, anisotropy cap ${settings.maxAnisotropy}`,
+      `pixelRatio ${renderer.getPixelRatio()}, anisotropy cap ${settings.maxAnisotropy}, ` +
+      `lens ${Math.round(lensForFov(kitchen.framing.referenceFov))}mm`,
   );
   console.log(
     `kitchen ready — camera "${camera.name}" (${camera.userData.name ?? '?'}), ` +

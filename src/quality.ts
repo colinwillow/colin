@@ -52,6 +52,15 @@ export interface QualitySettings {
    * is down, so on a phone the camera would lurch on tap rather than breathe.
    */
   sway: boolean;
+  /**
+   * 35mm-equivalent focal length, or undefined to keep the GLB's own 24 mm.
+   *
+   * A tall screen crops the sides off the reference framing, which leaves the
+   * near dining set hugging the edges and the room reading wider than it is.
+   * Easing in slightly recentres on the character. Desktop keeps 24 mm, since
+   * that is the shot as framed in Blender.
+   */
+  lensMm?: number;
 }
 
 export const QUALITY: Record<Quality, QualitySettings> = {
@@ -66,5 +75,6 @@ export const QUALITY: Record<Quality, QualitySettings> = {
     maxPixelRatio: 1.5,
     maxAnisotropy: 4,
     sway: false,
+    lensMm: 30,
   },
 };
