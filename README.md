@@ -116,8 +116,44 @@ Draco-compressed, 66 joints and 49 animation clips (`idle_neutral_00..03`,
 supersedes `colin_slim.glb`, the original import from the Orb/glorp project,
 which had 36 clips and a much darker skin.
 
-Still to come from glorp when the voice does: `colin_head.glb`, 92 morph targets,
-grafted at the head joint for a face with blendshapes.
+### The face graft
+
+`colin_head.glb` carries the blendshapes — 23 morph targets per primitive, 12 of
+them visemes (`V_Open`, `V_Explosive`, `V_Tight_O`…). The body has none, so the
+head is hung off the body's head bone and the body's own head is thrown away.
+
+It is thrown away in the shader, not hidden. There is no separate head mesh to
+switch off — the body is one mesh with one material — and collapsing the head
+bone drags every vertex blended into the neck and shoulders inward with it, so
+the head goes and a funnel appears where it was. `cutBodyHead` sums each vertex's
+skin weight on the head bone into a `headW` attribute and the fragment shader
+discards anything above `cut`. Vertices only partly bound to the head survive,
+which is what keeps the collar.
+
+This is the stopgap: two files, one mostly wasted, and the head textures loaded
+separately because `colin_head.glb` has four materials and zero images. A body
+exported with its head as its own material makes the cut a one-line hide.
+
+**Four things about the fit, each of which produced a different wrong answer:**
+
+- **The head bone's world scale is 0.0038**, since the armature is in centimetres
+  and then fitted to height. Anything parented to it inherits that, so a scale
+  that looks right in metres is out by a factor of 260.
+- **`Box3.setFromObject` is wrong for skinned meshes.** Stored positions are in
+  bind space and the shader places them with the bone matrices, not with
+  `matrixWorld`. Measuring raw gave a body 2 cm tall. `applyBoneTransform` is the
+  same arithmetic the shader does.
+- **`updateMatrixWorld` only walks downward.** Measuring the body from its own
+  subtree put his head at the world origin while the graft measured at his actual
+  position — two spaces, silently. `updateWorldMatrix(true, true)` walks parents.
+- **Bone matrices refresh at render time**, so between frames they hold the
+  previous pose; `skeleton.update()` before measuring. And measure in the pose he
+  is *rendered* in — `Skeleton.pose()` restores the bind scale, which on this rig
+  differs from the animated one by that same centimetre factor.
+
+The head also cancels the head bone's rest rotation, or the Mixamo rig's own
+orientation tips the Character Creator head down and sideways. Everything is in
+the panel under *Face graft*, including a viseme tester.
 
 - **Fitted, not scaled by a constant.** The rig arrives in centimetres under a
   root scaled by 0.01, and it is skinned, so its own numbers say little about

@@ -7,6 +7,7 @@ import {
 } from './kitchenEnvironment';
 import { createCameraRig, DEFAULT_RIG } from './cameraRig';
 import { createWander, DEFAULT_WANDER } from './wander';
+import { graftHead, DEFAULT_HEAD_FIT, type GraftedHead } from './head';
 import { loadCharacter, createCharacterLights, type Character, type CharacterLights } from './character';
 import { pickQuality, QUALITY } from './quality';
 
@@ -110,6 +111,31 @@ try {
   if (settings.lensMm !== undefined) kitchen.framing.referenceFov = fovForLens(settings.lensMm);
   setForegroundVisible(kitchen.room, false);
 
+  // The face with the visemes is a separate file on a different rig, so it gets
+  // hung off his head bone and the body's own head is discarded in the shader.
+  label.textContent = 'Loading his face';
+  let head: GraftedHead | null = null;
+  try {
+    head = await graftHead(colin, `${ASSETS}character/colin_head.glb`, {
+      renderer,
+      envMap: kitchen.envMap,
+      envMapIntensity: 1,
+      emissiveIntensity: 0.65,
+      roughness: 0.8,
+      fit: { ...DEFAULT_HEAD_FIT },
+      skins: {
+        colin_main: `${ASSETS}character/colin_head.webp`,
+        hair: `${ASSETS}character/colin_hair.webp`,
+        eyes: `${ASSETS}character/colin_eyes.webp`,
+      },
+    });
+    console.log(`head grafted — ${Object.keys(head.morphs).length} blendshapes, ` +
+      `scale ${head.measuredScale.toFixed(3)}`);
+  } catch (err) {
+    // Not fatal: without it he is the body's own head and cannot lip-sync.
+    console.warn('head graft failed, keeping the body head:', err);
+  }
+
   // He walks the open strip of floor on his own; the camera drifts after him.
   // No gesture and no permission prompt — the microphone will want one of those
   // soon enough without the camera asking for a second.
@@ -162,11 +188,11 @@ try {
     renderer.render(characterScene, camera);   // Colin, lit by his own rig
   });
 
-  buildTuningPanel(kitchen.manifest.exposure, lightmapped, colin, lights, look, roomExposure, kitchen, resize, wander, rig);
+  buildTuningPanel(kitchen.manifest.exposure, lightmapped, colin, lights, look, roomExposure, kitchen, resize, wander, rig, head);
 
   // Debug handles. From the devtools console: kitchen.interactive.Fridge_Door,
   // kitchen.lightmapped[0].lightMapIntensity, new THREE.Raycaster(), ...
-  Object.assign(window, { kitchen, colin, wander, rig, THREE });
+  Object.assign(window, { kitchen, colin, wander, rig, head, THREE });
 
   loading.classList.add('done');
   document.body.classList.add('ready');
@@ -213,6 +239,7 @@ function buildTuningPanel(
   resize: () => void,
   wander: ReturnType<typeof createWander>,
   rig: ReturnType<typeof createCameraRig>,
+  head: GraftedHead | null,
 ) {
   const state = {
     exposure,
@@ -254,6 +281,35 @@ function buildTuningPanel(
   roam.add(rig.config, 'followLag', 0.1, 4, 0.05).name('camera lag s');
   roam.add(rig.config, 'swayDeg', 0, 10, 0.1).name('mouse sway °');
   roam.open();
+
+  if (head) {
+    const face = gui.addFolder('Face graft');
+    const f = head.fit;
+    face.add(f, 'scale', 0.5, 2, 0.005).name('head scale').onChange(head.apply);
+    face.add(f, 'offsetY', -0.3, 0.3, 0.002).name('offset up (m)').onChange(head.apply);
+    face.add(f, 'offsetZ', -0.3, 0.3, 0.002).name('offset fwd (m)').onChange(head.apply);
+    face.add(f, 'pitchDeg', -30, 30, 0.5).name('pitch °').onChange(head.apply);
+    face.add(f, 'yawDeg', -30, 30, 0.5).name('yaw °').onChange(head.apply);
+    // How much of a vertex has to belong to the head bone before it is thrown
+    // away. Too low and the collar goes with it; too high and a skullcap stays.
+    face.add(f, 'cut', 0.1, 1, 0.01).name('head cut').onChange((v: number) => {
+      colin.model.traverse((o) => {
+        for (const m of [].concat((o as THREE.Mesh).material as never) as THREE.Material[]) {
+          const u = m?.userData?.headCut as { value: number } | undefined;
+          if (u) u.value = v;
+        }
+      });
+    });
+    const visemes = Object.keys(head.morphs).filter((n) => n.startsWith('V_'));
+    const demo = { viseme: visemes[0] ?? '', amount: 0 };
+    if (visemes.length) {
+      face.add(demo, 'viseme', visemes).name('test viseme')
+        .onChange(() => { head.clearMorphs(); head.setMorph(demo.viseme, demo.amount); });
+      face.add(demo, 'amount', 0, 1, 0.01).name('amount')
+        .onChange((v: number) => { head.clearMorphs(); head.setMorph(demo.viseme, v); });
+    }
+    face.open();
+  }
 
   const shot = gui.addFolder('Camera');
   const framing = {
