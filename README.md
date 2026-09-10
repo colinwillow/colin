@@ -272,6 +272,45 @@ model ships at 0.9, very matte), and `albedo lift` multiplies his base colour
 above 1, which is the only thing that actually makes the black cloth lighter
 rather than shinier.
 
+## Asset sets
+
+Three, chosen by `src/quality.ts` at startup and overridable with
+`?quality=desktop` / `mobile` / `mobile-ktx2`. See MOBILE.md.
+
+| set | download | est. GPU | who gets it |
+|---|---|---|---|
+| `desktop` | 18.0 MB | ~1387 MB | fine pointer |
+| `mobile` | 14.4 MB | ~382 MB | comparison only |
+| **`mobile-ktx2`** | **23.7 MB** | **~95 MB** | phones and iPads |
+
+GPU memory is what blanks a phone browser, and WebP does nothing for it — a WebP
+texture is still full RGBA once decoded. KTX2 stays compressed on the GPU, which
+is why phones get that set even though it nearly doubles the download. ETC1S for
+colour, UASTC for normal, roughness and the lightmaps.
+
+`scripts/make-mobile-ktx2.sh` rebuilds it from the WebP mobile set. Three things
+about that toolchain are worth knowing before touching it, because each fails
+*silently*:
+
+- **KTX-Software cannot read WebP.** Every texture is skipped with a warning and
+  the output is uncompressed. Hence the PNG decode step first.
+- **`gltf-transform png` needs `sharp`**, an optional dependency of the CLI. If it
+  is missing the command reports success and converts nothing.
+- **KTX-Software must be 4.4 or newer.** gltf-transform 4.5 calls
+  `ktx create --assign-tf`, which 4.3 does not have; it fails per texture and
+  leaves everything uncompressed.
+
+The transcoder needs no copy into `public/`. Like `DRACOLoader`, `KTX2Loader`
+resolves its own basis transcoder through `import.meta.url`, so the bundler emits
+it — MOBILE.md's instruction to copy `three/examples/jsm/libs/basis/` is not
+needed on this setup.
+
+Lightmaps are UASTC rather than ETC1S because they are smooth gradients that
+ETC1S bands. RDO at lambda 2.0 roughly halves their size for about 10 dB of PSNR
+(54.8 → 45.0), well clear of where banding shows: the four atlases come to 8.6 MB
+instead of 10.9 MB. Measured on the final render, the KTX2 set sits at 37 dB PSNR
+against the WebP one, with no banding visible on the walls, ceiling or tile grout.
+
 ## Coordinates
 
 Units are meters. Blender is Z-up and glTF/three.js is Y-up, so a Blender point
@@ -430,12 +469,7 @@ npm run screenshot -- http://127.0.0.1:4173/ shot.png 1500x1000
 
 ## Later milestones
 
-1. **Mobile GPU memory.** Download size is already handled (Draco + WebP, ~14 MB).
-   WebP only shrinks the download, though: a 4K texture still takes about 64 MB of
-   GPU memory once decoded, and there are several. For phones, convert textures to
-   KTX2 (Basis Universal) with gltf-transform, which stays compressed on the GPU,
-   and consider 2K versions of the 4K textures and lightmaps. Keep lightmaps in
-   sRGB and update the manifest if their format changes.
+1. ~~**Mobile GPU memory.**~~ Done — see *Asset sets* above.
 2. **Interactions.** Sit anchors on the chairs, door hinge animations for the
    fridge and oven, pick-up targets for the pot, lid, mug, and pans, and pathing
    for the character.

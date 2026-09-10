@@ -5,7 +5,7 @@
 // set is the same room at 2K colour, 1K normal/roughness and a half-size probe,
 // around 380 MB. See MOBILE.md.
 
-export type Quality = 'desktop' | 'mobile';
+export type Quality = 'desktop' | 'mobile' | 'mobile-ktx2';
 
 export interface QualityChoice {
   quality: Quality;
@@ -25,17 +25,17 @@ export interface QualityChoice {
  */
 export function pickQuality(): QualityChoice {
   const override = new URLSearchParams(location.search).get('quality');
-  if (override === 'mobile' || override === 'desktop') {
+  if (override === 'mobile' || override === 'desktop' || override === 'mobile-ktx2') {
     return { quality: override, reason: '?quality= override' };
   }
 
   if (matchMedia('(pointer: coarse)').matches) {
-    return { quality: 'mobile', reason: 'coarse pointer' };
+    return { quality: 'mobile-ktx2', reason: 'coarse pointer' };
   }
 
   const macLike = /Mac/.test(navigator.platform ?? '') || /Macintosh/.test(navigator.userAgent);
   if (macLike && navigator.maxTouchPoints > 1) {
-    return { quality: 'mobile', reason: 'iPadOS (reports as a Mac, but has touch points)' };
+    return { quality: 'mobile-ktx2', reason: 'iPadOS (reports as a Mac, but has touch points)' };
   }
 
   return { quality: 'desktop', reason: 'fine pointer' };
@@ -71,6 +71,22 @@ export const QUALITY: Record<Quality, QualitySettings> = {
     maxPixelRatio: 2,
     maxAnisotropy: Infinity,
     sway: true,
+  },
+  /**
+   * What phones actually get. Same room again with every texture as KTX2 —
+   * ETC1S for colour, UASTC for normal, roughness and the lightmaps.
+   *
+   * It stays compressed on the GPU, which is the whole point: 95 MB against the
+   * WebP set's 382 MB. GPU memory is the thing that blanks a phone browser, so
+   * it is worth the download going 14.4 MB to 23.7 MB. `?quality=mobile` loads
+   * the WebP set to compare.
+   */
+  'mobile-ktx2': {
+    manifest: 'kitchen_lightmaps_mobile_ktx2.json',
+    maxPixelRatio: 1.5,
+    maxAnisotropy: 4,
+    sway: false,
+    lensMm: 16,
   },
   mobile: {
     manifest: 'kitchen_lightmaps_mobile.json',

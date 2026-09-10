@@ -19,6 +19,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 // three < r180: use RGBELoader from 'three/addons/loaders/RGBELoader.js'
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 
@@ -136,13 +137,22 @@ export async function loadKitchen(
   renderer.toneMappingExposure = manifest.exposure; // ~0.55; nudge to taste
 
   step(0.05, 'lightmaps');
+  // KTX2 stays compressed on the GPU, where WebP does not — a 2K lightmap costs
+  // about 5.6 MB as UASTC against 22 MB as RGBA8. Like DRACOLoader, KTX2Loader
+  // resolves its own transcoder through import.meta.url, so the bundler emits it
+  // and nothing needs copying into public/.
+  const ktx2 = new KTX2Loader().detectSupport(renderer);
   const texLoader = new THREE.TextureLoader();
+  const loadTexture = (url: string) =>
+    url.endsWith('.ktx2') ? ktx2.loadAsync(url) : texLoader.loadAsync(url);
   const maxAnisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), anisotropyCap);
   const lightmaps: Record<string, THREE.Texture> = {};
   await Promise.all(
     Object.entries(manifest.atlases).map(async ([key, file]) => {
-      const t = await texLoader.loadAsync(basePath + file);
-      t.flipY = false;                    // glTF UV convention
+      const t = await loadTexture(basePath + file);
+      // KTX2 has no flipY to set — it is already stored in glTF's orientation —
+      // and assigning one on a compressed texture makes three complain.
+      if (!file.endsWith('.ktx2')) t.flipY = false;   // glTF UV convention
       t.colorSpace = THREE.SRGBColorSpace;
       t.channel = manifest.uvChannel;     // second UV set (TEXCOORD_1)
       t.anisotropy = maxAnisotropy;
@@ -164,9 +174,10 @@ export async function loadKitchen(
   step(0.6, 'room');
   const draco = new DRACOLoader();
   if (dracoPath) draco.setDecoderPath(dracoPath);
-  const gltfLoader = new GLTFLoader().setDRACOLoader(draco);
+  const gltfLoader = new GLTFLoader().setDRACOLoader(draco).setKTX2Loader(ktx2);
   const gltf = await gltfLoader.loadAsync(basePath + manifest.glb);
   draco.dispose();
+  ktx2.dispose();
   const room = gltf.scene;
 
   step(0.9, 'materials');
