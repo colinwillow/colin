@@ -54,11 +54,38 @@ export interface Kitchen {
   /** Every cloned material that got a lightmap, for live tuning. */
   lightmapped: THREE.MeshStandardMaterial[];
   lightmaps: Record<string, THREE.Texture>;
-  /** Aspect the shot was framed at in Blender (3:2), and its vertical FOV. */
-  referenceAspect: number;
-  referenceFov: number;
+  /** Framing controls; mutate and call `resize` to apply. */
+  framing: Framing;
   /** Point the camera at a viewport, preserving the reference framing. */
   resize: (width: number, height: number) => void;
+}
+
+export type FramingMode = 'lens' | 'cover';
+
+export interface Framing {
+  /**
+   * `lens` keeps the chosen focal length whatever the viewport is, cropping the
+   * sides on a tall screen. `cover` instead holds the Blender shot's horizontal
+   * framing by opening the lens up — faithful to the reference on a wide window,
+   * but on a phone in portrait it reaches for a 7 mm fisheye.
+   */
+  mode: FramingMode;
+  /** Aspect the shot was framed at in Blender (3:2). */
+  referenceAspect: number;
+  /** Vertical FOV of the reference shot. Set via `fovForLens` to change lens. */
+  referenceFov: number;
+  /** Ceiling on vertical FOV. Only bites in `cover` mode. */
+  maxFov: number;
+}
+
+/** Vertical FOV in degrees for a 35mm-equivalent focal length. The bake is 24 mm. */
+export function fovForLens(mm: number): number {
+  return THREE.MathUtils.radToDeg(2 * Math.atan(12 / mm));
+}
+
+/** Inverse of `fovForLens`. */
+export function lensForFov(fovDeg: number): number {
+  return 12 / Math.tan(THREE.MathUtils.degToRad(fovDeg) / 2);
 }
 
 export interface LoadKitchenOptions {
@@ -205,16 +232,22 @@ export async function loadKitchen(
   }
 
   // three sets these from the glTF camera, so they still hold the Blender framing.
-  const referenceAspect = camera.aspect;
-  const referenceFov = camera.fov;
-  const resize = (width: number, height: number) =>
-    fitCameraToViewport(camera, referenceAspect, referenceFov, width, height);
+  // `lens` by default. On a window at or wider than 3:2 the two modes are
+  // identical, so this only changes what a tall viewport does — and there,
+  // holding the lens is the difference between a portrait shot and a fisheye.
+  const framing: Framing = {
+    mode: 'lens',
+    referenceAspect: camera.aspect,
+    referenceFov: camera.fov,
+    maxFov: 65,
+  };
+  const resize = (width: number, height: number) => fitCameraToViewport(camera, framing, width, height);
   resize(renderer.domElement.clientWidth || 1, renderer.domElement.clientHeight || 1);
 
   step(1, 'ready');
   return {
     room, camera, interactive, envMap, manifest,
-    lightmapped, lightmaps, referenceAspect, referenceFov, resize,
+    lightmapped, lightmaps, framing, resize,
   };
 }
 
@@ -227,18 +260,18 @@ export async function loadKitchen(
  */
 export function fitCameraToViewport(
   camera: THREE.PerspectiveCamera,
-  referenceAspect: number,
-  referenceFov: number,
+  framing: Framing,
   width: number,
   height: number,
 ) {
   const aspect = width / height;
   camera.aspect = aspect;
-  const halfV = THREE.MathUtils.degToRad(referenceFov) / 2;
-  camera.fov =
-    aspect < referenceAspect
-      ? THREE.MathUtils.radToDeg(2 * Math.atan((Math.tan(halfV) * referenceAspect) / aspect))
-      : referenceFov;
+  const halfV = THREE.MathUtils.degToRad(framing.referenceFov) / 2;
+  const widened =
+    framing.mode === 'cover' && aspect < framing.referenceAspect
+      ? THREE.MathUtils.radToDeg(2 * Math.atan((Math.tan(halfV) * framing.referenceAspect) / aspect))
+      : framing.referenceFov;
+  camera.fov = Math.min(widened, framing.maxFov);
   camera.updateProjectionMatrix();
 }
 

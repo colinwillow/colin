@@ -304,10 +304,26 @@ safety net that warns loudly, not the intended path.
 - **`Camera_Wide`** is the main view: a 24 mm lens, framed on a 3:2 reference image.
 - **`Camera_Closeup`** is a tighter view of the stove-and-fridge wall.
 
-`kitchen.resize(width, height)` points the camera at the viewport. Wider than 3:2
-just reveals more room to the sides; narrower (a phone in portrait) widens the
-vertical FOV instead, so the stove wall stays in frame rather than being cropped
-away.
+`kitchen.resize(width, height)` points the camera at the viewport, and
+`kitchen.framing` decides how:
+
+- **`lens`** (default) keeps the focal length whatever the window is, cropping
+  the sides on a tall screen.
+- **`cover`** instead holds the Blender shot's horizontal framing by opening the
+  lens up, so nothing is lost from the sides.
+
+At 3:2 or wider the two are identical, so this only decides what a tall viewport
+does — and there `cover` is punishing. Holding the full room width at a phone's
+0.46 aspect means a **117° vertical FOV, a 7 mm fisheye**, which is what throws
+the near table and chairs across half the screen. `maxFov` caps that, and only
+bites in `cover` mode.
+
+The panel's **Camera** folder carries these, plus **lens (mm)** as a
+35mm-equivalent focal length — the bake is 24 mm, and longer crops in from the
+same spot. There is also **hide table & chairs**, which switches off
+`ENV_Wood_TableTop`, the three chairs and `Mug_Table` to see the room without the
+near dining set. That one is for looking only: their shadows and bounce are baked
+into the lightmaps and stay on the floor after the furniture goes.
 
 `addCameraSway(camera, dom, config)` returns an `update()` function to call every
 frame. It adds a small mouse-follow rotation, 2.5° by default; mutate

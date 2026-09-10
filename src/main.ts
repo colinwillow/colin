@@ -2,7 +2,10 @@
 // The character (from the Orb/glorp project) drops in later — see CHARACTER_SPOT.
 import * as THREE from 'three';
 import GUI from 'three/addons/libs/lil-gui.module.min.js';
-import { loadKitchen, addCameraSway, type SwayConfig } from './kitchenEnvironment';
+import {
+  loadKitchen, addCameraSway, fovForLens, lensForFov,
+  type SwayConfig, type FramingMode,
+} from './kitchenEnvironment';
 import { loadCharacter, createCharacterLights, type Character, type CharacterLights } from './character';
 import { pickQuality, QUALITY } from './quality';
 
@@ -125,7 +128,7 @@ try {
     renderer.render(characterScene, camera);   // Colin, lit by his own rig
   });
 
-  buildTuningPanel(kitchen.manifest.exposure, lightmapped, sway, colin, rig, look, roomExposure);
+  buildTuningPanel(kitchen.manifest.exposure, lightmapped, sway, colin, rig, look, roomExposure, kitchen, resize);
 
   // Debug handles. From the devtools console: kitchen.interactive.Fridge_Door,
   // kitchen.lightmapped[0].lightMapIntensity, new THREE.Raycaster(), ...
@@ -172,6 +175,8 @@ function buildTuningPanel(
   rig: CharacterLights,
   look: { toneMapping: THREE.ToneMapping; exposure: number },
   roomExposure: { value: number },
+  kitchen: Awaited<ReturnType<typeof loadKitchen>>,
+  resize: () => void,
 ) {
   const state = {
     exposure,
@@ -198,6 +203,36 @@ function buildTuningPanel(
   gui.add(state, 'swayDegrees', 0, 10, 0.1)
     .name('camera sway °')
     .onChange((v: number) => { sway.maxDeg = v; });
+
+  const shot = gui.addFolder('Camera');
+  const framing = {
+    mode: kitchen.framing.mode as FramingMode,
+    lens: Math.round(lensForFov(kitchen.framing.referenceFov)),
+    maxFov: kitchen.framing.maxFov,
+    hideForeground: false,
+  };
+  shot.add(framing, 'mode', ['lens', 'cover'] as FramingMode[]).name('framing')
+    .onChange((v: FramingMode) => { kitchen.framing.mode = v; resize(); });
+  // 35mm-equivalent focal length. The bake is 24 mm; longer crops in from the
+  // same spot, which is the cheap way to get the near furniture out of frame.
+  shot.add(framing, 'lens', 14, 105, 1).name('lens (mm)')
+    .onChange((v: number) => { kitchen.framing.referenceFov = fovForLens(v); resize(); });
+  // Only bites in `cover` mode, where a tall viewport would otherwise open the
+  // lens to 117 degrees vertical — a 7 mm fisheye.
+  shot.add(framing, 'maxFov', 40, 120, 1).name('max vertical FOV °')
+    .onChange((v: number) => { kitchen.framing.maxFov = v; resize(); });
+
+  // The near dining set dominates a portrait frame. Hiding it is a look-see
+  // only: its shadows and bounce are baked into the lightmaps and stay behind.
+  const FOREGROUND = ['ENV_Wood_TableTop', 'Chair_Far', 'Chair_Right', 'Chair_NearLeft', 'Mug_Table'];
+  shot.add(framing, 'hideForeground').name('hide table & chairs')
+    .onChange((v: boolean) => {
+      for (const name of FOREGROUND) {
+        const obj = kitchen.room.getObjectByName(name);
+        if (obj) obj.visible = !v;
+      }
+    });
+  shot.open();
   gui.add(state, 'logSettings').name('log settings to console');
 
   const skin = colin.materials;
