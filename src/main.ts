@@ -62,7 +62,7 @@ try {
     baseColorMap: `${ASSETS}character/Mat_diffuse_lighter.webp`,
     // Colin's Blender setup for this room: the diffuse fed back as 50% emission,
     // roughness 0.8.
-    emissiveIntensity: 0.8,
+    emissiveIntensity: 0.65,
     roughness: 0.8,
   });
   colin.root.position.copy(CHARACTER_SPOT);

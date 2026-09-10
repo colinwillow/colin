@@ -182,13 +182,12 @@ same three settings do the same job here:
 | | |
 |---|---|
 | `baseColorMap` | `Mat_diffuse_lighter.webp`, a repaint 1.45x brighter than the GLB's own skin |
-| `emissiveIntensity` | 0.8, with the base colour map as the emission map |
+| `emissiveIntensity` | 0.65, with the base colour map as the emission map |
 | `roughness` | 0.8 |
 
 Emission is not physical, but it lands on top of the shading rather than being
 fed through it, so it survives the curve: the hoodie keeps its charcoal and the
-denim its blue instead of drifting grey. The panel's **self-illumination** slider is this value; 0.8 is
-what puts his hoodie at 75, matching the reference.
+denim its blue instead of drifting grey. The panel's **self-illumination** slider is this value.
 
 **He runs on a different tone curve to the room, on purpose.** Because he is a
 separate pass he can, and matching Colin's Blender render of this same scene says
@@ -212,6 +211,26 @@ standalone viewer gives.
 Raising exposure flattens the ratio again (2.71 at 0.55, 2.41 at 0.75, 2.08 at
 1.05), so level and contrast trade against each other — 0.75 is the compromise
 that keeps the hoodie on target.
+
+**He is 2K where the room is 4K, which is why he looks softer.** Measured detail
+per texture (mean absolute Laplacian over the populated area, higher = more
+high-frequency content):
+
+| texture | size | detail | relative |
+|---|---|---|---|
+| his atlas | 2048² | 9.46 | 0.114 |
+| `Wood_Cabinet` | **4096²** | 3.23 | 0.046 |
+| `Tile_Blue` | **4096²** | 4.65 | 0.032 |
+| `Rug_Woven` | 2048² | 32.27 | 0.208 |
+
+His art is not the soft one — it carries more relative detail than the cabinets or
+tile. The room simply has twice his linear resolution on its large surfaces, and
+each of its 4K maps covers a single material where his one 2K map covers skin,
+hair, hoodie, jeans, shoes and eyes at once, with only about 38% of the atlas
+populated. Exporting his atlas at 4K, or repacking his UVs to fill more of the 2K,
+is what would close the gap. Compression is not the cause: the re-exported
+`Mat_diffuse_lighter.webp` measures *sharper* than the skin embedded in the GLB
+(9.46 against 5.41), so the WebP-in, WebP-out round trip cost nothing visible.
 
 *Measuring this yourself:* freeze the idle first (`colin.mixer.timeScale = 0`).
 Sampling a patch of him while he breathes measures the animation, not the light —
