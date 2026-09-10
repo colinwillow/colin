@@ -3,9 +3,10 @@
 import * as THREE from 'three';
 import GUI from 'three/addons/libs/lil-gui.module.min.js';
 import {
-  loadKitchen, addCameraSway, addTouchSway, fovForLens, lensForFov,
-  type SwayConfig, type FramingMode,
+  loadKitchen, fovForLens, lensForFov, type FramingMode,
 } from './kitchenEnvironment';
+import { createCameraRig, DEFAULT_RIG } from './cameraRig';
+import { createWander, DEFAULT_WANDER } from './wander';
 import { loadCharacter, createCharacterLights, type Character, type CharacterLights } from './character';
 import { pickQuality, QUALITY } from './quality';
 
@@ -99,8 +100,8 @@ try {
   const characterScene = new THREE.Scene();
   characterScene.environment = kitchen.envMap;   // same probe, so he matches the room
   characterScene.add(colin.root);
-  const rig = createCharacterLights();
-  characterScene.add(rig.group);
+  const lights = createCharacterLights();
+  characterScene.add(lights.group);
 
   // The two passes each set exposure, so the room's lives here rather than on the
   // renderer where the character pass would overwrite it.
@@ -109,22 +110,15 @@ try {
   if (settings.lensMm !== undefined) kitchen.framing.referenceFov = fovForLens(settings.lensMm);
   setForegroundVisible(kitchen.room, false);
 
-  // Touch gets a bigger throw than the mouse: tilt and drag are coarser inputs,
-  // and 2.5 degrees is imperceptible on a phone.
-  const sway: SwayConfig = { maxDeg: settings.sway === 'touch' ? 5 : 2.5 };
-  const touch = settings.sway === 'touch' ? addTouchSway(camera, sway) : null;
-  const updateSway = touch ? touch.update : addCameraSway(camera, window, sway);
-
-  if (touch) {
-    // iOS only hands out deviceorientation from inside a real gesture, so the
-    // first tap asks. Drag works regardless, and until this resolves.
-    const askOnce = async () => {
-      document.removeEventListener('pointerdown', askOnce);
-      const granted = await touch.requestTilt();
-      console.log(granted ? 'tilt enabled' : 'tilt unavailable — drag to look around');
-    };
-    document.addEventListener('pointerdown', askOnce, { once: true });
-  }
+  // He walks the open strip of floor on his own; the camera drifts after him.
+  // No gesture and no permission prompt — the microphone will want one of those
+  // soon enough without the camera asking for a second.
+  const wander = createWander(colin, { ...DEFAULT_WANDER, area: { ...DEFAULT_WANDER.area } });
+  const rig = createCameraRig(camera, {
+    mouse: settings.sway === 'mouse',
+    config: { ...DEFAULT_RIG, swayDeg: settings.sway === 'mouse' ? DEFAULT_RIG.swayDeg : 0 },
+  });
+  rig.setTarget(colin.root);
 
   const resize = () => {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, settings.maxPixelRatio));
@@ -151,8 +145,12 @@ try {
   const clock = new THREE.Clock();
   renderer.autoClear = false;
   renderer.setAnimationLoop(() => {
-    colin.update(clock.getDelta());
-    updateSway();
+    // Clamped: a backgrounded tab resumes with a huge delta, which would
+    // teleport him across the room in one frame.
+    const dt = Math.min(clock.getDelta(), 0.1);
+    wander.update(dt);
+    colin.update(dt);
+    rig.update(dt);
     renderer.clear();
 
     renderer.toneMapping = THREE.AgXToneMapping;
@@ -164,11 +162,11 @@ try {
     renderer.render(characterScene, camera);   // Colin, lit by his own rig
   });
 
-  buildTuningPanel(kitchen.manifest.exposure, lightmapped, sway, colin, rig, look, roomExposure, kitchen, resize);
+  buildTuningPanel(kitchen.manifest.exposure, lightmapped, colin, lights, look, roomExposure, kitchen, resize, wander, rig);
 
   // Debug handles. From the devtools console: kitchen.interactive.Fridge_Door,
   // kitchen.lightmapped[0].lightMapIntensity, new THREE.Raycaster(), ...
-  Object.assign(window, { kitchen, colin, touch, THREE });
+  Object.assign(window, { kitchen, colin, wander, rig, THREE });
 
   loading.classList.add('done');
   document.body.classList.add('ready');
@@ -207,20 +205,20 @@ try {
 function buildTuningPanel(
   exposure: number,
   lightmapped: THREE.MeshStandardMaterial[],
-  sway: SwayConfig,
   colin: Character,
-  rig: CharacterLights,
+  lights: CharacterLights,
   look: { toneMapping: THREE.ToneMapping; exposure: number },
   roomExposure: { value: number },
   kitchen: Awaited<ReturnType<typeof loadKitchen>>,
   resize: () => void,
+  wander: ReturnType<typeof createWander>,
+  rig: ReturnType<typeof createCameraRig>,
 ) {
   const state = {
     exposure,
     lightMapIntensity: lightmapped[0]?.lightMapIntensity ?? 8 * Math.PI,
     envMapIntensity: lightmapped[0]?.envMapIntensity ?? 0.25,
     environmentIntensity: 1,
-    swayDegrees: sway.maxDeg,
     logSettings: () => console.log(JSON.stringify(state, (_key, v) => (typeof v === 'function' ? undefined : v), 2)),
   };
 
@@ -237,9 +235,25 @@ function buildTuningPanel(
   gui.add(state, 'environmentIntensity', 0, 3, 0.01)
     .name('probe (character)')
     .onChange((v: number) => { scene.environmentIntensity = v; });
-  gui.add(state, 'swayDegrees', 0, 10, 0.1)
-    .name('camera sway °')
-    .onChange((v: number) => { sway.maxDeg = v; });
+
+  const roam = gui.addFolder('Wandering');
+  const w = wander.config;
+  roam.add(w, 'enabled').name('walk around');
+  roam.add(w, 'speed', 0.2, 1.6, 0.01).name('walk speed m/s');
+  roam.add(w, 'turnSpeed', 30, 360, 5).name('turn °/s');
+  roam.add(w, 'pauseMin', 0, 20, 0.5).name('pause min s');
+  roam.add(w, 'pauseMax', 0, 30, 0.5).name('pause max s');
+  roam.add(w, 'maxFacingAwayDeg', 30, 180, 5).name('max turn from camera °');
+  const area = gui.addFolder('  walkable floor');
+  area.add(w.area, 'minX', -3, 1.5, 0.05).name('min x');
+  area.add(w.area, 'maxX', -3, 1.5, 0.05).name('max x');
+  area.add(w.area, 'minZ', 0, 6, 0.05).name('min z');
+  area.add(w.area, 'maxZ', 0, 6, 0.05).name('max z');
+  area.close();
+  roam.add(rig.config, 'followDeg', 0, 12, 0.1).name('camera follow °');
+  roam.add(rig.config, 'followLag', 0.1, 4, 0.05).name('camera lag s');
+  roam.add(rig.config, 'swayDeg', 0, 10, 0.1).name('mouse sway °');
+  roam.open();
 
   const shot = gui.addFolder('Camera');
   const framing = {
@@ -283,9 +297,9 @@ function buildTuningPanel(
   const lit = gui.addFolder('Colin — lighting');
   const light = {
     probe: skin[0]?.envMapIntensity ?? 1,
-    key: rig.key.intensity,
-    fill: rig.fill.intensity,
-    rim: rig.rim.intensity,
+    key: lights.key.intensity,
+    fill: lights.fill.intensity,
+    rim: lights.rim.intensity,
     // His hoodie and jeans are near-black in the texture (mean albedo 0.0065).
     // Diffuse light cannot lift that, so these two are the real handles:
     // roughness decides how much of a specular edge he catches, and lift
@@ -297,11 +311,11 @@ function buildTuningPanel(
   lit.add(light, 'probe', 0, 10, 0.05).name('HDR probe')
     .onChange((v: number) => { for (const m of skin) m.envMapIntensity = v; });
   lit.add(light, 'key', 0, 8, 0.05).name('key (window)')
-    .onChange((v: number) => { rig.key.intensity = v; });
+    .onChange((v: number) => { lights.key.intensity = v; });
   lit.add(light, 'fill', 0, 8, 0.05).name('fill (doorway)')
-    .onChange((v: number) => { rig.fill.intensity = v; });
+    .onChange((v: number) => { lights.fill.intensity = v; });
   lit.add(light, 'rim', 0, 12, 0.05).name('rim (behind)')
-    .onChange((v: number) => { rig.rim.intensity = v; });
+    .onChange((v: number) => { lights.rim.intensity = v; });
   lit.add(light, 'roughness', 0, 1, 0.01).name('roughness')
     .onChange((v: number) => { for (const m of skin) m.roughness = v; });
   lit.add(light, 'emissive', 0, 1.5, 0.01).name('self-illumination')

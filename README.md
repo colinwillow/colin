@@ -384,21 +384,38 @@ back-wall furniture, not the near table.
 frame. It adds a small mouse-follow rotation, 2.5° by default; mutate
 `config.maxDeg` to change it live.
 
-On touch, `pointermove` only fires while a finger is down, so that version would
-sit dead and then lurch on tap. `addTouchSway` replaces it with two inputs and a
-bigger 5° throw, since tilt and drag are coarser than a cursor:
+`src/cameraRig.ts` composes everything onto that baked orientation rather than
+replacing it, so the Blender framing stays the anchor:
 
-- **Tilt**, the real analogue of the mouse effect since it needs no interaction.
-  iOS 13+ only hands out `deviceorientation` from inside a user gesture, so the
-  first tap calls `requestTilt()`. Tilt is measured relative to however the phone
-  was being held when it first reported, not to absolute level.
-- **Drag**, which always works, including where tilt is refused. It decays back
-  to centre on release, so a swipe reads as a nudge rather than a camera the
-  viewer now has to manage.
+- **Follow.** The camera drifts a couple of degrees after Colin as he moves,
+  aimed at his chest rather than his feet so it does not dip as he approaches.
+  Deliberately laggy — it should trail him, not track him.
+- **Mouse sway**, desktop only. `pointermove` on a touch screen fires just while
+  a finger is down, which reads as a lurch on tap rather than as breathing.
+
+A device-tilt version came and went. It works, but iOS only grants
+`deviceorientation` from inside a user gesture, and spending a permission prompt
+on two degrees of parallax — on top of the one the microphone will need — is a
+bad trade. Following him costs nothing and asks for nothing.
+
+## Wandering
+
+`src/wander.ts` walks him around the open strip of floor: idle for a few
+seconds, pick a spot, turn to face it, walk, arrive, idle again.
+
+The walk clips carry **no net root motion** — `walk_fwd_normal` drifts 0.0 units
+across its length — so they are in-place cycles and the position is ours to
+drive. Nothing ties the clip's stride to the distance covered, so `speed` is a
+number picked by eye; too high and his feet skate.
+
+`maxFacingAwayDeg` stops him choosing a spot that would turn his back on the
+camera, since he is meant to be someone you talk to. The walkable rectangle is in
+the panel under *Wandering → walkable floor*, and `wander.halt()` stops him where
+he is — that is what the talking code will call.
 
 *Testing this headless:* software rendering runs about one frame every two
-seconds, and the sway lerps per frame — a drag looks like it did nothing unless
-you wait several seconds for the frames to actually arrive.
+seconds, so nothing visibly moves. Step it by hand instead —
+`wander.update(1/60); colin.update(1/60); rig.update(1/60)` in a loop.
 
 ## Interactive objects
 
