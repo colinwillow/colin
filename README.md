@@ -33,7 +33,7 @@ index.html                      loading overlay + canvas
 src/main.ts                     renderer, resize, render loop, tuning panel
 src/kitchenEnvironment.ts       loads the GLB, wires up lightmaps and the HDR probe
 public/kitchen/                 the baked assets, served verbatim
-  kitchen_room.glb              the room: 82 meshes, two cameras, Draco + WebP
+  kitchen_room_02.glb           the room: 82 meshes, Draco + WebP
   kitchen_lightmaps.json        manifest: atlases, mesh->atlas map, exposure, interactive names
   kitchen_probe.hdr             360° HDR panorama shot from the middle of the room
   lightmaps/LM_Arch.webp        walls, floor, ceiling, beams, tile, rugs
@@ -46,6 +46,28 @@ scripts/screenshot.mjs          optional headless render check (see below)
 About 14 MB of assets. Every file is well under GitHub's limits, so Git LFS is
 optional — worth revisiting if the bake gets re-exported often, since binary
 history grows the repo.
+
+### Re-exporting the room from Blender
+
+The manifest's `glb` field names the export in use, so a new one is dropped in
+and pointed at. Two exporter checkboxes matter, and `kitchen_room_02.glb` was
+exported without either:
+
+- **Include > Cameras.** Without it the GLB has no `Camera_Wide` and the loader
+  falls back to `cameraFallback` in the manifest — a copy of the same transform,
+  with a console warning. The framing is identical, but it is a copy that can
+  drift from the .blend, so prefer shipping the real camera.
+- **Include > Custom Properties.** These carry the `lightmap_atlas` tag on each
+  node. Without them the loader falls back to the manifest's `meshes` map, which
+  currently covers all 72 lightmapped meshes — but a mesh added later and absent
+  from that map would silently render unlit.
+
+Neither is fatal today (verified: 90 lightmapped materials, nothing with a
+lightmap UV left unlit, all 13 interactive objects resolving), but ticking both
+makes the GLB self-describing again.
+
+To compare a new export against the current one without rebuilding, append
+`?glb=<file>.glb` — it loads that file from `public/kitchen/` instead.
 
 **Draco:** the GLB's geometry is Draco-compressed, but there is nothing to copy
 into `public/`. Since r180 `DRACOLoader` resolves its own decoder through
@@ -102,11 +124,16 @@ In three.js terms:
 
 ## Cameras
 
-The GLB contains two cameras, both as **root nodes** of the scene. three names the
-resulting object after the glTF *camera* (`Cam_Wide`, `Cam_Main`) and keeps the
-node name in `userData.name`, so the loader matches on the object name, its
-`userData.name`, or its parent's — matching only on the parent silently falls
-through to `gltf.cameras[0]`, which is the closeup.
+`kitchen_room_02.glb` ships no cameras, so the view currently comes from
+`cameraFallback` in the manifest: position `(-0.36, 1.25, 4.9)`, no rotation,
+53.13° vertical FOV, 3:2 — `Camera_Wide` from the original export, reproduced
+exactly. Restoring the real cameras is one export checkbox (see above).
+
+When the GLB does carry them, both sit as **root nodes** of the scene, and three
+names the resulting object after the glTF *camera* (`Cam_Wide`, `Cam_Main`) while
+keeping the node name in `userData.name`. So the loader matches on the object
+name, its `userData.name`, or its parent's — matching only on the parent silently
+falls through to `gltf.cameras[0]`, which is the closeup.
 
 - **`Camera_Wide`** is the main view: a 24 mm lens, framed on a 3:2 reference image.
 - **`Camera_Closeup`** is a tighter view of the stove-and-fridge wall.
@@ -177,6 +204,24 @@ stays at the root. To check a subpath build locally:
 ```bash
 VITE_BASE=/colin/ npm run build && VITE_BASE=/colin/ npx vite preview
 ```
+
+## Coincident faces
+
+The first export had trim modelled exactly flush with the panel behind it — most
+visibly the sink, where the apron's front face and its bottom rim shared a ~15 mm
+band across the full 730 mm width on the plane `x = -2.46`. Both surfaces
+rasterised to the same depth, so which one won was decided per pixel and shimmered
+as the camera swayed. Depth precision is not the lever: this room already gets
+about 0.01 mm of depth resolution at that distance from a 24-bit buffer, and these
+depths were equal rather than merely close.
+
+`kitchen_room_02.glb` fixes it in the model. Probing 2,849 rays through the sink
+region: 173 hit coincident surfaces in the first export, **0** in the second.
+Keep trim a hair proud of the surface behind it rather than flush.
+
+To check for this after a re-export, the debug handles `window.kitchen` and
+`window.THREE` are exposed — raycast a region and look for hits whose distances
+differ by less than a few microns.
 
 ## Checking the render headlessly
 

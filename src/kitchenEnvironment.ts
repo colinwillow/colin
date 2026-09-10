@@ -32,6 +32,12 @@ export interface KitchenManifest {
   /** Mesh/material name -> atlas key. Fallback for meshes without extras. */
   meshes: Record<string, string>;
   interactive: string[];
+  /**
+   * Camera_Wide's transform, in case a re-export drops the cameras (the Blender
+   * glTF exporter has a "Cameras" checkbox that is easy to leave off). The GLB's
+   * own camera always wins; this only keeps the site from going dark.
+   */
+  cameraFallback?: { position: [number, number, number]; fov: number; aspect: number; near: number; far: number };
   probe: string;
   glb: string;
   camera: string;
@@ -79,6 +85,11 @@ export async function loadKitchen(
   const res = await fetch(basePath + 'kitchen_lightmaps.json');
   if (!res.ok) throw new Error(`Could not fetch ${basePath}kitchen_lightmaps.json (${res.status})`);
   const manifest: KitchenManifest = await res.json();
+
+  // ?glb=<file> loads a different export from the same folder, for comparing a
+  // re-export against the one the manifest names without rebuilding.
+  const glbOverride = new URLSearchParams(location.search).get('glb');
+  if (glbOverride && /^[\w.-]+\.glb$/.test(glbOverride)) manifest.glb = glbOverride;
 
   // Colour pipeline close to Blender's AgX view at exposure -0.85
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -155,12 +166,24 @@ export async function loadKitchen(
   // In the GLB the camera nodes (Camera_Wide, Camera_Closeup) are scene roots and
   // three names the resulting object after the glTF *camera* (Cam_Wide), keeping the
   // node name in userData — so match on any of the names the node could surface under.
-  const camera = findCamera(room, manifest.camera);
+  let camera = findCamera(room, manifest.camera);
   if (!camera) {
-    throw new Error(
-      `No camera matching "${manifest.camera}" in ${manifest.glb}. ` +
-        `Cameras found: ${listCameras(room).join(', ') || 'none'}`,
+    const fb = manifest.cameraFallback;
+    if (!fb) {
+      throw new Error(
+        `No camera matching "${manifest.camera}" in ${manifest.glb}. ` +
+          `Cameras found: ${listCameras(room).join(', ') || 'none'}`,
+      );
+    }
+    console.warn(
+      `${manifest.glb} has no camera "${manifest.camera}" (found: ` +
+        `${listCameras(room).join(', ') || 'none'}). Falling back to the transform in ` +
+        `kitchen_lightmaps.json. Re-export from Blender with Include > Cameras ticked ` +
+        `so the framing comes from the scene rather than a copy of it.`,
     );
+    camera = new THREE.PerspectiveCamera(fb.fov, fb.aspect, fb.near, fb.far);
+    camera.position.fromArray(fb.position);
+    room.add(camera);
   }
 
   // three sets these from the glTF camera, so they still hold the Blender framing.

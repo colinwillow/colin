@@ -1,0 +1,12 @@
+# Text files are LF in the repository, whatever the checkout platform uses.
+# Without this the manifest flips between CRLF and LF depending on who edited it
+# last, and a two-line change shows up as a whole-file rewrite.
+* text=auto eol=lf
+
+# Baked assets: never touch these.
+*.glb  binary
+*.hdr  binary
+*.webp binary
+*.png  binary
+*.jpg  binary
+*.exr  binary

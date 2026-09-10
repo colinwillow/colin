@@ -49,6 +49,10 @@ try {
 
   buildTuningPanel(kitchen.manifest.exposure, lightmapped, sway);
 
+  // Debug handles. From the devtools console: kitchen.interactive.Fridge_Door,
+  // kitchen.lightmapped[0].lightMapIntensity, new THREE.Raycaster(), ...
+  Object.assign(window, { kitchen, THREE });
+
   loading.classList.add('done');
   document.body.classList.add('ready');
   // Drop the overlay outright once it has faded. A CSS transition can stall on a
