@@ -3,10 +3,10 @@
   "colorSpace": "srgb",
   "uvChannel": 1,
   "atlases": {
-    "LM_Arch": "lightmaps/LM_Arch.png",
-    "LM_Cabinetry": "lightmaps/LM_Cabinetry.png",
-    "LM_Props": "lightmaps/LM_Props.png",
-    "LM_Interactive": "lightmaps/LM_Interactive.png"
+    "LM_Arch": "lightmaps/LM_Arch.webp",
+    "LM_Cabinetry": "lightmaps/LM_Cabinetry.webp",
+    "LM_Props": "lightmaps/LM_Props.webp",
+    "LM_Interactive": "lightmaps/LM_Interactive.webp"
   },
   "meshes": {
     "Chair_Far": "LM_Interactive",

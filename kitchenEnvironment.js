@@ -1,11 +1,13 @@
 // kitchenEnvironment.js — loads the baked kitchen into a three.js scene.
 // Put these next to each other in your public folder (e.g. /public/kitchen/):
-//   kitchen_room.glb, kitchen_lightmaps.json, kitchen_probe.hdr, lightmaps/*.png
+//   kitchen_room.glb, kitchen_lightmaps.json, kitchen_probe.hdr, lightmaps/*.webp
+// The GLB is Draco-compressed: copy node_modules/three/examples/jsm/libs/draco/gltf/ to /public/draco/
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js'; // three < r180: use RGBELoader from 'three/addons/loaders/RGBELoader.js'
 
-export async function loadKitchen(renderer, scene, { basePath = '/kitchen/' } = {}) {
+export async function loadKitchen(renderer, scene, { basePath = '/kitchen/', dracoPath = '/draco/' } = {}) {
   const manifest = await (await fetch(basePath + 'kitchen_lightmaps.json')).json();
 
   // Colour pipeline close to Blender's AgX + exposure -0.85
@@ -33,7 +35,11 @@ export async function loadKitchen(renderer, scene, { basePath = '/kitchen/' } = 
   hdr.dispose(); pmrem.dispose();
   scene.environment = envMap;
 
-  const gltf = await new GLTFLoader().loadAsync(basePath + manifest.glb);
+  const draco = new DRACOLoader();
+  draco.setDecoderPath(dracoPath);
+  const gltfLoader = new GLTFLoader().setDRACOLoader(draco);
+  const gltf = await gltfLoader.loadAsync(basePath + manifest.glb);
+  draco.dispose();
   const room = gltf.scene;
 
   room.traverse((obj) => {
