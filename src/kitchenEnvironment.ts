@@ -151,6 +151,12 @@ export async function loadKitchen(
       const c = m.clone();                          // one material can span meshes in different atlases
       c.lightMap = lightmaps[atlas] ?? null;
       c.lightMapIntensity = LM_INTENSITY;
+      // envMap has to be assigned explicitly for envMapIntensity to mean
+      // anything. When a material leaves it null and the scene has an
+      // environment, three overwrites the material's envMapIntensity uniform
+      // with scene.environmentIntensity — so this 0.25 was silently running at
+      // 1, and these surfaces were double-lit exactly as the notes warn against.
+      c.envMap = envMap;
       c.envMapIntensity = 0.25;                     // keep reflections, avoid double-lighting the room
       lightmapped.push(c);
       return c;

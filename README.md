@@ -141,20 +141,36 @@ brightness and shadow. From the console he is `window.colin` —
 
 ### Why he looks dark, and how he is lit
 
-He is lit correctly by the HDR and always was. The probe was rendered from
-`(-0.3, 1.1, 1.7)` — the spot he stands on — so it is a physically accurate
-capture of the light arriving there, and `envMapIntensity = 1` is the right
-number, not a low one. Measured, the probe's mean radiance is 0.553, which puts a
-white surface under it at 0.553 against the room's baked 0.63 (median) to 1.06
-(mean). He is not being starved of light.
+He renders far darker than the same model does in a standalone viewer, for two
+reasons that took some digging.
 
-What is dark is **his texture**. His atlas has a mean albedo of 0.0065; even
-inside the 17.5% of it that is actually used, the median is 0.0026. The hoodie and
-jeans are near-black. A 0.01-albedo surface under correct light renders at about
-0.005 — physically right, and a black hole next to a bright pastel room. No amount
-of *diffuse* light fixes that: doubling the light on a black hoodie gives twice
-almost nothing. Black cloth reads through its **specular edge**, which is why the
-rig leans on a rim light.
+**`material.envMapIntensity` was doing nothing.** three overwrites it:
+
+```js
+// WebGLRenderer, when binding a program
+if ( material.isMeshStandardMaterial && material.envMap === null && scene.environment !== null ) {
+    m_uniforms.envMapIntensity.value = scene.environmentIntensity;
+}
+```
+
+Any material that leaves its own `envMap` null and sits in a scene with an
+`environment` gets the *scene's* intensity, and whatever the material asked for is
+discarded. That silently applied to the room too — its documented
+`envMapIntensity = 0.25`, the one meant to stop baked surfaces being double-lit,
+had been running at 1 the whole time. Both the room and Colin now assign
+`envMap` explicitly, which is what makes the per-material value take effect.
+
+**The probe reads about 4x below the baked room.** The lightmaps recover their
+true level by multiplying by `encodeScale` (8); the probe gets no equivalent
+compensation, so lighting him at a physical 1.0 leaves him well under the room he
+is standing in. He runs at 4, which lands his hoodie and skin close to Colin's
+own render of the same model.
+
+His albedo is genuinely dark on top of that — the hoodie and jeans sit around
+0.04 linear — so his shape comes largely from specular, which is why the rig
+leans on a rim light. Note the room is warm, so he correctly picks up a colour
+cast that a neutral studio render will not have; the fill light is cool and
+comparatively strong to keep that from going orange.
 
 So he gets three directional lights following the room — key from the window wall
 at `-x`, a cool bounce from the doorway at `+x`, and a rim from behind to lift him

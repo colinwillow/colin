@@ -42,6 +42,12 @@ try {
   label.textContent = 'Loading Colin';
   const colin = await loadCharacter(`${ASSETS}character/colin_slim.glb`, {
     height: 1.75,
+    envMap: kitchen.envMap,
+    // The probe reads about 4x lower than the baked room in practice. The
+    // lightmaps recover their true level by multiplying by encodeScale (8); the
+    // probe gets no such compensation, so he needs it here or he sits well below
+    // the room he is standing in.
+    envMapIntensity: 4,
     // Overrides the near-black skin baked into the GLB. Replace the file to
     // restyle him; nothing here needs to change.
     baseColorMap: `${ASSETS}character/colin_diffuse_2k.webp`,
@@ -175,7 +181,7 @@ function buildTuningPanel(
     roughness: skin[0]?.roughness ?? 0.9,
     lift: 1,
   };
-  lit.add(light, 'probe', 0, 4, 0.01).name('HDR probe')
+  lit.add(light, 'probe', 0, 10, 0.05).name('HDR probe')
     .onChange((v: number) => { for (const m of skin) m.envMapIntensity = v; });
   lit.add(light, 'key', 0, 8, 0.05).name('key (window)')
     .onChange((v: number) => { rig.key.intensity = v; });

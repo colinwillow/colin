@@ -50,6 +50,12 @@ export interface LoadCharacterOptions {
    * if a future atlas genuinely carries cutout alpha.
    */
   opaque?: boolean;
+  /**
+   * The room's HDR probe. Assigning it per-material is what makes
+   * `envMapIntensity` below take effect: three overwrites that uniform with
+   * `scene.environmentIntensity` for any material whose own envMap is null.
+   */
+  envMap?: THREE.Texture;
   /** Lit by the probe like everything unbaked; the room uses 0.25. */
   envMapIntensity?: number;
   /** Clip to start on. Falls back to the first idle, then the first clip. */
@@ -60,7 +66,7 @@ export interface LoadCharacterOptions {
 export async function loadCharacter(
   url: string,
   {
-    height = 1.75, envMapIntensity = 1, idle = 'idle_neutral_00',
+    height = 1.75, envMap, envMapIntensity = 1, idle = 'idle_neutral_00',
     baseColorMap, opaque = true, dracoPath,
   }: LoadCharacterOptions = {},
 ): Promise<Character> {
@@ -104,6 +110,7 @@ export async function loadCharacter(
     for (const m of [].concat(mesh.material as never) as THREE.Material[]) {
       const std = m as THREE.MeshStandardMaterial;
       if (!std.isMeshStandardMaterial) continue;
+      if (envMap) std.envMap = envMap;
       std.envMapIntensity = envMapIntensity;
 
       // His material declares alphaMode BLEND, and three's GLTFLoader turns that
@@ -212,13 +219,17 @@ export function createCharacterLights(): CharacterLights {
   const group = new THREE.Group();
   group.name = 'CharacterLights';
 
-  const key = new THREE.DirectionalLight(0xfff1de, 2.2);   // warm, window side
+  // Neutral rather than warm: the probe already carries the room's colour, and
+  // stacking a warm key on top pushed his skin to a R/B ratio of 2.6 against
+  // roughly 1.4 in Colin's reference render.
+  const key = new THREE.DirectionalLight(0xffffff, 1.0);   // window side
   key.position.set(-3, 2.6, 2.2);
 
-  const fill = new THREE.DirectionalLight(0xdCe8ff, 0.8);  // cool, doorway side
+  // The fill is cool and comparatively strong, as counterweight to that warmth.
+  const fill = new THREE.DirectionalLight(0x8fbcff, 2.0);  // doorway side
   fill.position.set(2.5, 1.6, 1.5);
 
-  const rim = new THREE.DirectionalLight(0xffffff, 3.0);   // behind, for the edge
+  const rim = new THREE.DirectionalLight(0xdde9ff, 1.7);   // behind, for the edge
   rim.position.set(0.8, 2.4, -2.0);
 
   group.add(key, key.target, fill, fill.target, rim, rim.target);
