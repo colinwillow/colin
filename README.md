@@ -318,9 +318,13 @@ does — and there `cover` is punishing. Holding the full room width at a phone'
 the near table and chairs across half the screen. `maxFov` caps that, and only
 bites in `cover` mode.
 
+On a phone the reference 24 mm crops most of the kitchen away, so mobile opens up
+to **16 mm** — roughly halfway between that and the 7 mm the fit would reach on
+its own. Desktop keeps 24 mm.
+
 The panel's **Camera** folder carries these, plus **lens (mm)** as a
-35mm-equivalent focal length — the bake is 24 mm, and longer crops in from the
-same spot. There is also **hide table & chairs**, which switches off
+35mm-equivalent focal length — the bake is 24 mm, longer crops in from the same
+spot, wider brings the room back. There is also **hide table & chairs**, which switches off
 `ENV_Wood_TableTop`, the three chairs and `Mug_Table` to see the room without the
 near dining set. That one is for looking only: their shadows and bounce are baked
 into the lightmaps and stay on the floor after the furniture goes.

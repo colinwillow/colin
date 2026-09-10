@@ -266,12 +266,18 @@ export function fitCameraToViewport(
 ) {
   const aspect = width / height;
   camera.aspect = aspect;
-  const halfV = THREE.MathUtils.degToRad(framing.referenceFov) / 2;
-  const widened =
-    framing.mode === 'cover' && aspect < framing.referenceAspect
-      ? THREE.MathUtils.radToDeg(2 * Math.atan((Math.tan(halfV) * framing.referenceAspect) / aspect))
-      : framing.referenceFov;
-  camera.fov = Math.min(widened, framing.maxFov);
+  if (framing.mode === 'cover' && aspect < framing.referenceAspect) {
+    // Opening up to hold the horizontal framing is what needs a ceiling — left
+    // alone it reaches 117 degrees on a phone. An explicitly chosen lens does
+    // not: if someone asks for 14 mm they mean 14 mm.
+    const halfV = THREE.MathUtils.degToRad(framing.referenceFov) / 2;
+    const widened = THREE.MathUtils.radToDeg(
+      2 * Math.atan((Math.tan(halfV) * framing.referenceAspect) / aspect),
+    );
+    camera.fov = Math.min(widened, framing.maxFov);
+  } else {
+    camera.fov = framing.referenceFov;
+  }
   camera.updateProjectionMatrix();
 }
 

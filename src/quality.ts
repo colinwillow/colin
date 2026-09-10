@@ -55,10 +55,12 @@ export interface QualitySettings {
   /**
    * 35mm-equivalent focal length, or undefined to keep the GLB's own 24 mm.
    *
-   * A tall screen crops the sides off the reference framing, which leaves the
-   * near dining set hugging the edges and the room reading wider than it is.
-   * Easing in slightly recentres on the character. Desktop keeps 24 mm, since
-   * that is the shot as framed in Blender.
+   * A tall screen at the reference 24 mm crops most of the kitchen away — the
+   * window, fridge and shelves all fall outside the frame. Going a little wider
+   * brings the room back without the distortion of letting the fit open the lens
+   * up on its own, which reaches 7 mm and throws the near furniture at you.
+   * 16 mm is about halfway between those two. Desktop keeps 24 mm, the shot as
+   * framed in Blender.
    */
   lensMm?: number;
 }
@@ -75,6 +77,6 @@ export const QUALITY: Record<Quality, QualitySettings> = {
     maxPixelRatio: 1.5,
     maxAnisotropy: 4,
     sway: false,
-    lensMm: 30,
+    lensMm: 16,
   },
 };
