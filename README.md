@@ -110,18 +110,18 @@ Read this before changing any materials or adding lights.
 
 ## The character
 
-`colin_slim.glb` comes from the Orb/glorp project. Of the figures there it is the
-only self-contained one: a single mesh, its texture embedded, 82 joints, and 36
-animation clips (`idle_neutral_00..03`, `idle_happy_bob`, `idle_waving`, walks,
-runs, dances). The other bodies — `colin_anim2`, `colin_animations_02` — export
-with no texture at all and need their skin supplied from glorp's
-`images/textures/`, plus `colin_head.glb` grafted on at the head joint for a face
-with blendshapes. That graft is what the viseme work will need, and is worth
-porting when the voice comes over, not before.
+`colin_stylized_01.glb` is Colin's export: one mesh, texture embedded as WebP,
+Draco-compressed, 66 joints and 49 animation clips (`idle_neutral_00..03`,
+`idle_happy_bob`, `idle_waving`, walks, runs, dances, falls, stand-ups). It
+supersedes `colin_slim.glb`, the original import from the Orb/glorp project,
+which had 36 clips and a much darker skin.
+
+Still to come from glorp when the voice does: `colin_head.glb`, 92 morph targets,
+grafted at the head joint for a face with blendshapes.
 
 - **Fitted, not scaled by a constant.** The rig arrives in centimetres under a
-  root scaled by 0.01 and turned a quarter turn, and it is skinned, so its own
-  numbers say little about final height — he measures 5.467 units in bind pose.
+  root scaled by 0.01, and it is skinned, so its own numbers say little about
+  final height — he measures 5.467 units in bind pose.
   `loadCharacter` measures the bind pose and fits it to `height` (1.75 m), then
   drops his feet to `y = 0` and centres him over `root.position`. A different
   body file can be dropped in without retuning anything.
@@ -160,17 +160,28 @@ discarded. That silently applied to the room too — its documented
 had been running at 1 the whole time. Both the room and Colin now assign
 `envMap` explicitly, which is what makes the per-material value take effect.
 
-**The probe reads about 4x below the baked room.** The lightmaps recover their
-true level by multiplying by `encodeScale` (8); the probe gets no equivalent
-compensation, so lighting him at a physical 1.0 leaves him well under the room he
-is standing in. He runs at 4, which lands his hoodie and skin close to Colin's
-own render of the same model.
+**The probe reads below the baked room.** The lightmaps recover their true level
+by multiplying by `encodeScale` (8); the probe gets no equivalent compensation, so
+lighting him at a physical 1.0 leaves him under the room he is standing in. He
+runs at 2.5, which puts his hoodie at about 61 against 60 in Colin's own render of
+the same model.
 
-His albedo is genuinely dark on top of that — the hoodie and jeans sit around
-0.04 linear — so his shape comes largely from specular, which is why the rig
-leans on a rim light. Note the room is warm, so he correctly picks up a colour
-cast that a neutral studio render will not have; the fill light is cool and
-comparatively strong to keep that from going orange.
+The room is warm, so he correctly picks up a colour cast a neutral studio render
+will not have; the fill light is cool and comparatively strong to keep that from
+tipping orange.
+
+**He cannot be matched exactly to a standalone render, and that is AgX.** The
+curve that makes the room match Blender compresses and desaturates as values
+rise, so his charcoal hoodie drifts grey and his skin caps around 122 where a
+plain sRGB view of the same model reaches 200. Because he is a separate pass he
+can carry his own curve — the panel's **tone curve** picks it, with `None` being
+the raw look a standalone viewer gives. It defaults to AgX, matching the room,
+since a character on a different curve to the set he stands in tends to read as
+composited in.
+
+*Measuring this yourself:* freeze the idle first (`colin.mixer.timeScale = 0`).
+Sampling a patch of him while he breathes measures the animation, not the light —
+it produced a bogus reading that looked like a lighting non-linearity.
 
 So he gets three directional lights following the room — key from the window wall
 at `-x`, a cool bounce from the doorway at `+x`, and a rim from behind to lift him

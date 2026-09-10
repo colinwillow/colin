@@ -40,17 +40,17 @@ try {
 
   // He faces +z, back to the stove, looking at the camera.
   label.textContent = 'Loading Colin';
-  const colin = await loadCharacter(`${ASSETS}character/colin_slim.glb`, {
+  const colin = await loadCharacter(`${ASSETS}character/colin_stylized_01.glb`, {
     height: 1.75,
     envMap: kitchen.envMap,
     // The probe reads about 4x lower than the baked room in practice. The
     // lightmaps recover their true level by multiplying by encodeScale (8); the
     // probe gets no such compensation, so he needs it here or he sits well below
     // the room he is standing in.
-    envMapIntensity: 4,
-    // Overrides the near-black skin baked into the GLB. Replace the file to
-    // restyle him; nothing here needs to change.
-    baseColorMap: `${ASSETS}character/colin_diffuse_2k.webp`,
+    envMapIntensity: 2.5,
+    // colin_stylized_01 carries its skin embedded, so nothing is overridden
+    // here. To restyle him without a re-export, point baseColorMap at a file in
+    // public/character/ instead.
   });
   colin.root.position.copy(CHARACTER_SPOT);
 
@@ -65,6 +65,10 @@ try {
   const rig = createCharacterLights();
   characterScene.add(rig.group);
 
+  // The two passes each set exposure, so the room's lives here rather than on the
+  // renderer where the character pass would overwrite it.
+  const roomExposure = { value: kitchen.manifest.exposure };
+
   const sway: SwayConfig = { maxDeg: 2.5 };
   const updateSway = addCameraSway(camera, window, sway);
 
@@ -76,17 +80,32 @@ try {
   resize();
   window.addEventListener('resize', resize);
 
+  // Because he is a separate pass, he can carry his own tone curve. AgX matches
+  // the room to Blender but desaturates hard as values rise, which is what turns
+  // his charcoal hoodie grey and caps his skin well below a plain sRGB render of
+  // the same model. Defaults to the room's curve; the panel can break them apart.
+  const look = {
+    toneMapping: THREE.AgXToneMapping as THREE.ToneMapping,
+    exposure: manifest.exposure,
+  };
+
   const clock = new THREE.Clock();
   renderer.autoClear = false;
   renderer.setAnimationLoop(() => {
     colin.update(clock.getDelta());
     updateSway();
     renderer.clear();
+
+    renderer.toneMapping = THREE.AgXToneMapping;
+    renderer.toneMappingExposure = roomExposure.value;
     renderer.render(scene, camera);            // baked room, no lights
+
+    renderer.toneMapping = look.toneMapping;
+    renderer.toneMappingExposure = look.exposure;
     renderer.render(characterScene, camera);   // Colin, lit by his own rig
   });
 
-  buildTuningPanel(kitchen.manifest.exposure, lightmapped, sway, colin, rig);
+  buildTuningPanel(kitchen.manifest.exposure, lightmapped, sway, colin, rig, look, roomExposure);
 
   // Debug handles. From the devtools console: kitchen.interactive.Fridge_Door,
   // kitchen.lightmapped[0].lightMapIntensity, new THREE.Raycaster(), ...
@@ -127,6 +146,8 @@ function buildTuningPanel(
   sway: SwayConfig,
   colin: Character,
   rig: CharacterLights,
+  look: { toneMapping: THREE.ToneMapping; exposure: number },
+  roomExposure: { value: number },
 ) {
   const state = {
     exposure,
@@ -140,7 +161,7 @@ function buildTuningPanel(
   const gui = new GUI({ title: 'Kitchen' });
   gui.add(state, 'exposure', 0.1, 1.5, 0.01)
     .name('exposure')
-    .onChange((v: number) => { renderer.toneMappingExposure = v; });
+    .onChange((v: number) => { roomExposure.value = v; });
   gui.add(state, 'lightMapIntensity', 0, 40, 0.1)
     .name('lightmap (room)')
     .onChange((v: number) => { for (const m of lightmapped) m.lightMapIntensity = v; });
@@ -193,6 +214,22 @@ function buildTuningPanel(
     .onChange((v: number) => { for (const m of skin) m.roughness = v; });
   lit.add(light, 'lift', 1, 6, 0.05).name('albedo lift')
     .onChange((v: number) => { for (const m of skin) m.color.setScalar(v); });
+
+  // His own tone curve, which only works because he is a separate pass. AgX keeps
+  // him consistent with the room; Neutral and ACES hold far more saturation, and
+  // None is the raw sRGB look a standalone viewer shows.
+  const curves: Record<string, THREE.ToneMapping> = {
+    'AgX (matches room)': THREE.AgXToneMapping,
+    Neutral: THREE.NeutralToneMapping,
+    ACESFilmic: THREE.ACESFilmicToneMapping,
+    Reinhard: THREE.ReinhardToneMapping,
+    None: THREE.NoToneMapping,
+  };
+  const curveState = { curve: 'AgX (matches room)', exposure: look.exposure };
+  lit.add(curveState, 'curve', Object.keys(curves)).name('tone curve')
+    .onChange((v: string) => { look.toneMapping = curves[v]; });
+  lit.add(curveState, 'exposure', 0.1, 2, 0.01).name('his exposure')
+    .onChange((v: number) => { look.exposure = v; });
   lit.open();
   gui.close();
 }
