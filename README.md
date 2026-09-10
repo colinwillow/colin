@@ -121,10 +121,13 @@ grafted at the head joint for a face with blendshapes.
 
 - **Fitted, not scaled by a constant.** The rig arrives in centimetres under a
   root scaled by 0.01, and it is skinned, so its own numbers say little about
-  final height — he measures 5.467 units in bind pose.
-  `loadCharacter` measures the bind pose and fits it to `height` (1.75 m), then
-  drops his feet to `y = 0` and centres him over `root.position`. A different
-  body file can be dropped in without retuning anything.
+  final height — he measures 5.467 units in bind pose. `loadCharacter` measures
+  the bind pose and fits it to `height`, then drops his feet to `y = 0` and
+  centres him over `root.position`. A different body file can be dropped in
+  without retuning anything, and `colin.setHeight(m)` re-fits live.
+- **He is 2.1 m, deliberately.** At a literal 1.75 m he reads as a small figure at
+  the back of a wide room. The reference has him with more presence than that, so
+  he is scaled past life size. The panel's **height (m)** slider is this value.
 - **Lit by the probe plus a rig of his own.** See below — the room still has no
   real-time lights.
 - **Contact shadow, not a cast shadow.** A soft ellipse on the floor, multiply
@@ -160,15 +163,14 @@ discarded. That silently applied to the room too — its documented
 had been running at 1 the whole time. Both the room and Colin now assign
 `envMap` explicitly, which is what makes the per-material value take effect.
 
-**The probe reads below the baked room.** The lightmaps recover their true level
-by multiplying by `encodeScale` (8); the probe gets no equivalent compensation, so
-lighting him at a physical 1.0 leaves him under the room he is standing in. He
-runs at 2.5, which puts his hoodie at about 61 against 60 in Colin's own render of
-the same model.
+**Once emission carries him, the lighting has to come back down.** The probe boost
+and the three lights were there to compensate for a near-black skin. Stacking 50%
+emission on top of that compensation blew him out — his hoodie went to 107 against
+about 75 in the reference. The probe is back to a physical 1.0 and the rig runs at
+roughly a third of what it was, so the lights shape him rather than set his level.
 
 The room is warm, so he correctly picks up a colour cast a neutral studio render
-will not have; the fill light is cool and comparatively strong to keep that from
-tipping orange.
+will not have; the fill light is cool to keep that from tipping orange.
 
 **Emission is what gets him past AgX.** The curve that makes the room match
 Blender compresses and desaturates as values rise, so lighting him harder only washed

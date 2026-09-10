@@ -25,6 +25,8 @@ export interface Character {
   update: (deltaSeconds: number) => void;
   /** What he actually measured before being fitted, in metres. */
   measuredHeight: number;
+  /** Re-fit him to a new height, keeping his feet on the floor. */
+  setHeight: (metres: number) => void;
   /** 0 = no contact shadow, 1 = full. */
   setShadowStrength: (strength: number) => void;
   /** His standard materials, for tuning brightness and roughness. */
@@ -149,6 +151,23 @@ export async function loadCharacter(
   if (baseColorMap) await applyBaseColorMap(materials, baseColorMap);
   if (emissiveIntensity > 0) applyEmissiveFromBaseColor(materials, emissiveIntensity);
 
+  // Re-fit rather than scaling `root`, so the contact shadow keeps its own size
+  // and the model stays centred on the spot he occupies.
+  const fitTo = (metres: number) => {
+    model.scale.setScalar(1);
+    model.position.set(0, 0, 0);
+    model.updateMatrixWorld(true);
+    const raw = new THREE.Box3().setFromObject(model);
+    const rawHeight = raw.getSize(new THREE.Vector3()).y;
+    model.scale.multiplyScalar(rawHeight > 1e-6 ? metres / rawHeight : 1);
+    model.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(model);
+    const mid = box.getCenter(new THREE.Vector3());
+    model.position.x -= mid.x;
+    model.position.z -= mid.z;
+    model.position.y -= box.min.y;
+  };
+
   const root = new THREE.Group();
   root.name = 'Character';
   root.add(model);
@@ -175,6 +194,7 @@ export async function loadCharacter(
   return {
     root, model, mixer, clips, play, measuredHeight, materials,
     setShadowStrength: shadow.setStrength,
+    setHeight: fitTo,
     update: (dt) => mixer.update(dt),
   };
 }
@@ -252,14 +272,16 @@ export function createCharacterLights(): CharacterLights {
   // Neutral rather than warm: the probe already carries the room's colour, and
   // stacking a warm key on top pushed his skin to a R/B ratio of 2.6 against
   // roughly 1.4 in Colin's reference render.
-  const key = new THREE.DirectionalLight(0xffffff, 1.0);   // window side
+  // Deliberately gentle. These were strong while they were compensating for a
+  // near-black skin; with the lighter atlas and 50% emission carrying him, the
+  // same intensities blew him out. They are here for shape now, not for level.
+  const key = new THREE.DirectionalLight(0xffffff, 0.3);   // window side
   key.position.set(-3, 2.6, 2.2);
 
-  // The fill is cool and comparatively strong, as counterweight to that warmth.
-  const fill = new THREE.DirectionalLight(0x8fbcff, 2.0);  // doorway side
+  const fill = new THREE.DirectionalLight(0x8fbcff, 0.6);  // doorway side, cool
   fill.position.set(2.5, 1.6, 1.5);
 
-  const rim = new THREE.DirectionalLight(0xdde9ff, 1.7);   // behind, for the edge
+  const rim = new THREE.DirectionalLight(0xdde9ff, 0.5);   // behind, for the edge
   rim.position.set(0.8, 2.4, -2.0);
 
   group.add(key, key.target, fill, fill.target, rim, rim.target);

@@ -41,13 +41,16 @@ try {
   // He faces +z, back to the stove, looking at the camera.
   label.textContent = 'Loading Colin';
   const colin = await loadCharacter(`${ASSETS}character/colin_stylized_01.glb`, {
-    height: 1.75,
+    // Larger than life on purpose: at a measured 1.75 m he reads as a small
+    // figure at the back of a wide room. Colin's reference has him with more
+    // presence than that.
+    height: 2.1,
     envMap: kitchen.envMap,
     // The probe reads about 4x lower than the baked room in practice. The
     // lightmaps recover their true level by multiplying by encodeScale (8); the
     // probe gets no such compensation, so he needs it here or he sits well below
     // the room he is standing in.
-    envMapIntensity: 2.5,
+    envMapIntensity: 1,
     // The GLB embeds a skin, but this lighter repaint replaces it.
     baseColorMap: `${ASSETS}character/Mat_diffuse_lighter.webp`,
     // Colin's Blender setup for this room: the diffuse fed back as 50% emission,
@@ -184,11 +187,14 @@ function buildTuningPanel(
   const pose = {
     clip: colin.clips.find((c) => c.startsWith('idle')) ?? colin.clips[0],
     turn: 0,
+    height: 2.1,
     shadow: 1,
   };
   him.add(pose, 'clip', colin.clips).name('animation').onChange((v: string) => colin.play(v));
   him.add(pose, 'turn', -180, 180, 1).name('facing °')
     .onChange((v: number) => { colin.root.rotation.y = THREE.MathUtils.degToRad(v); });
+  him.add(pose, 'height', 1.4, 3, 0.01).name('height (m)')
+    .onChange((v: number) => colin.setHeight(v));
   him.add(pose, 'shadow', 0, 1, 0.01).name('contact shadow')
     .onChange((v: number) => colin.setShadowStrength(v));
 
