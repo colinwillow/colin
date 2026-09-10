@@ -55,7 +55,7 @@ try {
     baseColorMap: `${ASSETS}character/Mat_diffuse_lighter.webp`,
     // Colin's Blender setup for this room: the diffuse fed back as 50% emission,
     // roughness 0.8.
-    emissiveIntensity: 0.5,
+    emissiveIntensity: 0.8,
     roughness: 0.8,
   });
   colin.root.position.copy(CHARACTER_SPOT);
@@ -90,9 +90,14 @@ try {
   // the room to Blender but desaturates hard as values rise, which is what turns
   // his charcoal hoodie grey and caps his skin well below a plain sRGB render of
   // the same model. Defaults to the room's curve; the panel can break them apart.
+  // ACES rather than the room's AgX, and this is deliberate. Matched against
+  // Colin's Blender render of the same scene, AgX holds his hoodie at the right
+  // level but crushes the range above it — skin to hoodie comes out at 1.9 where
+  // the reference is 2.7. ACES lands that ratio at 2.71 almost exactly; it just
+  // needs a little more exposure than the room to sit at the same level.
   const look = {
-    toneMapping: THREE.AgXToneMapping as THREE.ToneMapping,
-    exposure: manifest.exposure,
+    toneMapping: THREE.ACESFilmicToneMapping as THREE.ToneMapping,
+    exposure: 0.75,
   };
 
   const clock = new THREE.Clock();
@@ -237,7 +242,7 @@ function buildTuningPanel(
     Reinhard: THREE.ReinhardToneMapping,
     None: THREE.NoToneMapping,
   };
-  const curveState = { curve: 'AgX (matches room)', exposure: look.exposure };
+  const curveState = { curve: 'ACESFilmic', exposure: look.exposure };
   lit.add(curveState, 'curve', Object.keys(curves)).name('tone curve')
     .onChange((v: string) => { look.toneMapping = curves[v]; });
   lit.add(curveState, 'exposure', 0.1, 2, 0.01).name('his exposure')

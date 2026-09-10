@@ -182,18 +182,36 @@ same three settings do the same job here:
 | | |
 |---|---|
 | `baseColorMap` | `Mat_diffuse_lighter.webp`, a repaint 1.45x brighter than the GLB's own skin |
-| `emissiveIntensity` | 0.5, with the base colour map as the emission map |
+| `emissiveIntensity` | 0.8, with the base colour map as the emission map |
 | `roughness` | 0.8 |
 
 Emission is not physical, but it lands on top of the shading rather than being
 fed through it, so it survives the curve: the hoodie keeps its charcoal and the
-denim its blue instead of drifting grey. That brings his skin to 191 against 200
-in Colin's reference. The panel's **self-illumination** slider is this value.
+denim its blue instead of drifting grey. The panel's **self-illumination** slider is this value; 0.8 is
+what puts his hoodie at 75, matching the reference.
 
-He can also carry his own tone curve, which only works because he is a separate
-pass — the panel's **tone curve** picks it, `None` being the raw look a standalone
-viewer gives. It defaults to AgX, matching the room, since a character on a
-different curve to the set he stands in tends to read as composited in.
+**He runs on a different tone curve to the room, on purpose.** Because he is a
+separate pass he can, and matching Colin's Blender render of this same scene says
+he should. Measured against it, at the emission level that puts his hoodie right:
+
+| curve | hoodie | skin | skin / hoodie |
+|---|---|---|---|
+| AgX (the room's) | 75 | 143 | 1.91 |
+| Neutral | 44 | 134 | 3.05 |
+| **ACESFilmic** | 55 | 149 | **2.71** |
+| None | 90 | 188 | 2.09 |
+| *Colin's reference* | *75* | *205* | *2.73* |
+
+AgX holds his hoodie at the right level but crushes everything above it — his skin
+lands at 1.9x the hoodie where the reference is 2.7x. ACES reproduces that ratio
+almost exactly and only needs a little more exposure to sit at the same level,
+hence `ACESFilmicToneMapping` at 0.75 against the room's AgX at 0.55. The panel's
+**tone curve** and **his exposure** are these two values; `None` is the raw look a
+standalone viewer gives.
+
+Raising exposure flattens the ratio again (2.71 at 0.55, 2.41 at 0.75, 2.08 at
+1.05), so level and contrast trade against each other — 0.75 is the compromise
+that keeps the hoodie on target.
 
 *Measuring this yourself:* freeze the idle first (`colin.mixer.timeScale = 0`).
 Sampling a patch of him while he breathes measures the animation, not the light —
