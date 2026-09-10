@@ -8,6 +8,12 @@ import { loadCharacter, createCharacterLights, type Character, type CharacterLig
 /** On the rug in front of the stove, where the HDR probe was rendered. */
 export const CHARACTER_SPOT = new THREE.Vector3(-0.3, 0, 1.7);
 
+/**
+ * Where the assets live. '/' in dev, '/<repo>/' on GitHub Pages — every asset
+ * path has to go through this or it 404s once deployed under a subpath.
+ */
+const ASSETS = import.meta.env.BASE_URL;
+
 const loading = document.getElementById('loading')!;
 const label = document.getElementById('label')!;
 const bar = document.querySelector<HTMLElement>('#bar > i')!;
@@ -23,7 +29,7 @@ const scene = new THREE.Scene();
 
 try {
   const kitchen = await loadKitchen(renderer, scene, {
-    basePath: `${import.meta.env.BASE_URL}kitchen/`,
+    basePath: `${ASSETS}kitchen/`,
     onProgress: (fraction, what) => {
       bar.style.width = `${Math.round(fraction * 100)}%`;
       label.textContent = fraction >= 1 ? 'Ready' : `Loading ${what}`;
@@ -34,7 +40,7 @@ try {
 
   // He faces +z, back to the stove, looking at the camera.
   label.textContent = 'Loading Colin';
-  const colin = await loadCharacter('/character/colin_slim.glb', { height: 1.75 });
+  const colin = await loadCharacter(`${ASSETS}character/colin_slim.glb`, { height: 1.75 });
   colin.root.position.copy(CHARACTER_SPOT);
 
   // Colin lives in his own scene, drawn in a second pass over the same depth

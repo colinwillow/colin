@@ -77,7 +77,9 @@ function isLightmappable(m: THREE.Material): m is THREE.MeshStandardMaterial {
 export async function loadKitchen(
   renderer: THREE.WebGLRenderer,
   scene: THREE.Scene,
-  { basePath = '/kitchen/', dracoPath, onProgress }: LoadKitchenOptions = {},
+  // Default follows the deployed base ('/' in dev, '/<repo>/' on Pages) rather
+  // than a bare '/', which would 404 under a subpath.
+  { basePath = `${import.meta.env.BASE_URL}kitchen/`, dracoPath, onProgress }: LoadKitchenOptions = {},
 ): Promise<Kitchen> {
   const step = (fraction: number, label: string) => onProgress?.(fraction, label);
 
