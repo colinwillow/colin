@@ -44,6 +44,12 @@ export interface LoadCharacterOptions {
    * colin_anim2 and colin_animations_02 export with no map at all.
    */
   baseColorMap?: string;
+  /**
+   * Render him as a solid object. See the note where this is applied — the GLB
+   * declares alphaMode BLEND, which costs him his depth buffer. Set false only
+   * if a future atlas genuinely carries cutout alpha.
+   */
+  opaque?: boolean;
   /** Lit by the probe like everything unbaked; the room uses 0.25. */
   envMapIntensity?: number;
   /** Clip to start on. Falls back to the first idle, then the first clip. */
@@ -55,7 +61,7 @@ export async function loadCharacter(
   url: string,
   {
     height = 1.75, envMapIntensity = 1, idle = 'idle_neutral_00',
-    baseColorMap, dracoPath,
+    baseColorMap, opaque = true, dracoPath,
   }: LoadCharacterOptions = {},
 ): Promise<Character> {
   const loader = new GLTFLoader();
@@ -99,6 +105,23 @@ export async function loadCharacter(
       const std = m as THREE.MeshStandardMaterial;
       if (!std.isMeshStandardMaterial) continue;
       std.envMapIntensity = envMapIntensity;
+
+      // His material declares alphaMode BLEND, and three's GLTFLoader turns that
+      // into transparent = true AND depthWrite = false. Losing depth writes is
+      // what mangles his head: with nothing in the depth buffer, his triangles
+      // land in index order, so the back of his skull and the inside of his
+      // mouth draw over his face and the hair tears into shards.
+      //
+      // The blending buys nothing — his atlas has no alpha channel and the
+      // material is fully opaque — so it is pure cost. It is a leftover from the
+      // Orb setup, where this head was faded out to graft a blendshape head on
+      // in its place. We are not grafting, so he goes back to being solid.
+      if (opaque && std.transparent && std.opacity >= 1) {
+        std.transparent = false;
+        std.depthWrite = true;
+        std.needsUpdate = true;
+      }
+
       materials.push(std);
     }
   });
