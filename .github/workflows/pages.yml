@@ -11,10 +11,13 @@ permissions:
   pages: write
   id-token: write
 
-# One deployment at a time; let a newer push finish rather than cancelling it.
+# One deployment at a time. Superseded runs are cancelled rather than queued:
+# during rapid iteration they otherwise pile up behind each other and the Pages
+# deploy step times out after ten minutes, leaving the site on a stale build.
+# Only the newest commit matters here anyway.
 concurrency:
   group: pages
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build:
