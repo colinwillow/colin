@@ -34,6 +34,16 @@ export interface Character {
 export interface LoadCharacterOptions {
   /** Fitted height in metres, feet on the floor. */
   height?: number;
+  /**
+   * Replace the base colour map on every material that has one.
+   *
+   * The skin that ships inside colin_slim.glb is near-black on the hoodie and
+   * jeans (mean albedo 0.0065 over the atlas), which is what makes him read as a
+   * silhouette in a bright room. Pointing this at a repainted atlas swaps it
+   * without touching the GLB. It is also how the other bodies will be dressed:
+   * colin_anim2 and colin_animations_02 export with no map at all.
+   */
+  baseColorMap?: string;
   /** Lit by the probe like everything unbaked; the room uses 0.25. */
   envMapIntensity?: number;
   /** Clip to start on. Falls back to the first idle, then the first clip. */
@@ -43,7 +53,10 @@ export interface LoadCharacterOptions {
 
 export async function loadCharacter(
   url: string,
-  { height = 1.75, envMapIntensity = 1, idle = 'idle_neutral_00', dracoPath }: LoadCharacterOptions = {},
+  {
+    height = 1.75, envMapIntensity = 1, idle = 'idle_neutral_00',
+    baseColorMap, dracoPath,
+  }: LoadCharacterOptions = {},
 ): Promise<Character> {
   const loader = new GLTFLoader();
   // Not needed by colin_slim, but the other bodies are Draco-compressed.
@@ -90,6 +103,8 @@ export async function loadCharacter(
     }
   });
 
+  if (baseColorMap) await applyBaseColorMap(materials, baseColorMap);
+
   const root = new THREE.Group();
   root.name = 'Character';
   root.add(model);
@@ -118,6 +133,34 @@ export async function loadCharacter(
     setShadowStrength: shadow.setStrength,
     update: (dt) => mixer.update(dt),
   };
+}
+
+/**
+ * Swap in a base colour map loaded from outside the GLB.
+ *
+ * glTF textures are addressed with the origin at the top left, so `flipY` has to
+ * be false — TextureLoader defaults it to true, and getting this wrong turns his
+ * face upside down on the UV island rather than failing loudly. Wrapping and
+ * anisotropy are carried over from the map being replaced.
+ */
+async function applyBaseColorMap(materials: THREE.MeshStandardMaterial[], url: string) {
+  const texture = await new THREE.TextureLoader().loadAsync(url);
+  texture.flipY = false;
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.needsUpdate = true;
+
+  let applied = 0;
+  for (const m of materials) {
+    if (!m.map) continue;                       // leave materials that never had one
+    texture.wrapS = m.map.wrapS;
+    texture.wrapT = m.map.wrapT;
+    texture.anisotropy = m.map.anisotropy;
+    m.map.dispose();
+    m.map = texture;
+    m.needsUpdate = true;
+    applied++;
+  }
+  console.log(`character skin: ${url.split('/').pop()} applied to ${applied} material(s)`);
 }
 
 export interface CharacterLights {

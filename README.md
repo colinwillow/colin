@@ -43,6 +43,7 @@ public/kitchen/                 the baked assets, served verbatim
   lightmaps/LM_Interactive.webp the movable objects, baked at rest position
 public/character/
   colin_slim.glb                the rigged character, from colinwillow/glorp
+  colin_diffuse_2k.webp         his skin, overriding the one inside the GLB
 scripts/screenshot.mjs          optional headless render check (see below)
 ```
 
@@ -177,6 +178,12 @@ Two scenes, one camera, one depth buffer. His lights physically cannot reach the
 room, he is still correctly occluded by the furniture, and his contact shadow
 still multiplies against the floor drawn in the first pass. `characterScene.environment`
 is the same probe, so the room's own light still reaches him.
+
+**To restyle him, replace `public/character/colin_diffuse_2k.webp`.** It is
+loaded over whatever base colour map the GLB carries, so a repainted atlas takes
+effect with no code change and no re-export. It must live under `public/` — files
+elsewhere in the repo are not served. The same hook is how the other bodies will
+be dressed: `colin_anim2` and `colin_animations_02` ship with no map at all.
 
 The **Colin — lighting** folder in the panel has the handles. `HDR probe` is his
 `envMapIntensity`; `key`/`fill`/`rim` are the three lights. The last two matter

@@ -40,7 +40,12 @@ try {
 
   // He faces +z, back to the stove, looking at the camera.
   label.textContent = 'Loading Colin';
-  const colin = await loadCharacter(`${ASSETS}character/colin_slim.glb`, { height: 1.75 });
+  const colin = await loadCharacter(`${ASSETS}character/colin_slim.glb`, {
+    height: 1.75,
+    // Overrides the near-black skin baked into the GLB. Replace the file to
+    // restyle him; nothing here needs to change.
+    baseColorMap: `${ASSETS}character/colin_diffuse_2k.webp`,
+  });
   colin.root.position.copy(CHARACTER_SPOT);
 
   // Colin lives in his own scene, drawn in a second pass over the same depth
