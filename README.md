@@ -324,10 +324,16 @@ its own. Desktop keeps 24 mm.
 
 The panel's **Camera** folder carries these, plus **lens (mm)** as a
 35mm-equivalent focal length — the bake is 24 mm, longer crops in from the same
-spot, wider brings the room back. There is also **hide table & chairs**, which switches off
-`ENV_Wood_TableTop`, the three chairs and `Mug_Table` to see the room without the
-near dining set. That one is for looking only: their shadows and bounce are baked
-into the lightmaps and stay on the floor after the furniture goes.
+spot, wider brings the room back. **The near dining set is hidden by default** — `ENV_Wood_TableTop`, the three
+chairs and `Mug_Table`. It filled the lower third of a phone frame and none of it
+does anything yet. The panel's **hide table & chairs** toggle puts it back.
+
+Their shadows and bounce are still baked into the lightmaps, so what is on the
+floor is the shade of furniture that is no longer there. It reads as furniture
+removed from a photograph rather than furniture that was never in the room, and
+it is subtle at the current framing — but making the removal permanent means a
+re-bake. `ENV_Wood_Table` is deliberately not in the set: despite the name it is
+back-wall furniture, not the near table.
 
 `addCameraSway(camera, dom, config)` returns an `update()` function to call every
 frame. It adds a small mouse-follow rotation, 2.5° by default; mutate
