@@ -48,9 +48,12 @@ try {
     // probe gets no such compensation, so he needs it here or he sits well below
     // the room he is standing in.
     envMapIntensity: 2.5,
-    // colin_stylized_01 carries its skin embedded, so nothing is overridden
-    // here. To restyle him without a re-export, point baseColorMap at a file in
-    // public/character/ instead.
+    // The GLB embeds a skin, but this lighter repaint replaces it.
+    baseColorMap: `${ASSETS}character/Mat_diffuse_lighter.webp`,
+    // Colin's Blender setup for this room: the diffuse fed back as 50% emission,
+    // roughness 0.8.
+    emissiveIntensity: 0.5,
+    roughness: 0.8,
   });
   colin.root.position.copy(CHARACTER_SPOT);
 
@@ -200,6 +203,7 @@ function buildTuningPanel(
     // roughness decides how much of a specular edge he catches, and lift
     // multiplies the base colour itself.
     roughness: skin[0]?.roughness ?? 0.9,
+    emissive: skin[0]?.emissiveIntensity ?? 0,
     lift: 1,
   };
   lit.add(light, 'probe', 0, 10, 0.05).name('HDR probe')
@@ -212,6 +216,8 @@ function buildTuningPanel(
     .onChange((v: number) => { rig.rim.intensity = v; });
   lit.add(light, 'roughness', 0, 1, 0.01).name('roughness')
     .onChange((v: number) => { for (const m of skin) m.roughness = v; });
+  lit.add(light, 'emissive', 0, 1.5, 0.01).name('self-illumination')
+    .onChange((v: number) => { for (const m of skin) m.emissiveIntensity = v; });
   lit.add(light, 'lift', 1, 6, 0.05).name('albedo lift')
     .onChange((v: number) => { for (const m of skin) m.color.setScalar(v); });
 

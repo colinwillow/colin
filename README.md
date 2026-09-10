@@ -170,14 +170,28 @@ The room is warm, so he correctly picks up a colour cast a neutral studio render
 will not have; the fill light is cool and comparatively strong to keep that from
 tipping orange.
 
-**He cannot be matched exactly to a standalone render, and that is AgX.** The
-curve that makes the room match Blender compresses and desaturates as values
-rise, so his charcoal hoodie drifts grey and his skin caps around 122 where a
-plain sRGB view of the same model reaches 200. Because he is a separate pass he
-can carry his own curve — the panel's **tone curve** picks it, with `None` being
-the raw look a standalone viewer gives. It defaults to AgX, matching the room,
-since a character on a different curve to the set he stands in tends to read as
-composited in.
+**Emission is what gets him past AgX.** The curve that makes the room match
+Blender compresses and desaturates as values rise, so lighting him harder only washed
+him out — his charcoal hoodie drifted grey and his skin capped near 122 where the
+target is 200. Colin's own Blender setup for this room solves it by feeding the
+diffuse texture back in as an emission map at 50%, with roughness 0.8, and the
+same three settings do the same job here:
+
+| | |
+|---|---|
+| `baseColorMap` | `Mat_diffuse_lighter.webp`, a repaint 1.45x brighter than the GLB's own skin |
+| `emissiveIntensity` | 0.5, with the base colour map as the emission map |
+| `roughness` | 0.8 |
+
+Emission is not physical, but it lands on top of the shading rather than being
+fed through it, so it survives the curve: the hoodie keeps its charcoal and the
+denim its blue instead of drifting grey. That brings his skin to 191 against 200
+in Colin's reference. The panel's **self-illumination** slider is this value.
+
+He can also carry his own tone curve, which only works because he is a separate
+pass — the panel's **tone curve** picks it, `None` being the raw look a standalone
+viewer gives. It defaults to AgX, matching the room, since a character on a
+different curve to the set he stands in tends to read as composited in.
 
 *Measuring this yourself:* freeze the idle first (`colin.mixer.timeScale = 0`).
 Sampling a patch of him while he breathes measures the animation, not the light —

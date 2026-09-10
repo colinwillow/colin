@@ -45,6 +45,18 @@ export interface LoadCharacterOptions {
    */
   baseColorMap?: string;
   /**
+   * Feed the base colour map back in as emission at this strength (0 = off).
+   *
+   * Colin's Blender setup for this room uses the diffuse texture as an emission
+   * map at 50%. It is not physical, but it is the thing that survives AgX: the
+   * curve compresses and desaturates lit values as they rise, whereas emission
+   * lands on top of the shading and keeps the hoodie's charcoal and the denim's
+   * blue instead of drifting grey.
+   */
+  emissiveIntensity?: number;
+  /** Overrides the roughness the GLB ships. Colin's Blender look uses 0.8. */
+  roughness?: number;
+  /**
    * Render him as a solid object. See the note where this is applied — the GLB
    * declares alphaMode BLEND, which costs him his depth buffer. Set false only
    * if a future atlas genuinely carries cutout alpha.
@@ -67,7 +79,7 @@ export async function loadCharacter(
   url: string,
   {
     height = 1.75, envMap, envMapIntensity = 1, idle = 'idle_neutral_00',
-    baseColorMap, opaque = true, dracoPath,
+    baseColorMap, emissiveIntensity = 0, roughness, opaque = true, dracoPath,
   }: LoadCharacterOptions = {},
 ): Promise<Character> {
   const loader = new GLTFLoader();
@@ -112,6 +124,7 @@ export async function loadCharacter(
       if (!std.isMeshStandardMaterial) continue;
       if (envMap) std.envMap = envMap;
       std.envMapIntensity = envMapIntensity;
+      if (roughness !== undefined) std.roughness = roughness;
 
       // His material declares alphaMode BLEND, and three's GLTFLoader turns that
       // into transparent = true AND depthWrite = false. Losing depth writes is
@@ -134,6 +147,7 @@ export async function loadCharacter(
   });
 
   if (baseColorMap) await applyBaseColorMap(materials, baseColorMap);
+  if (emissiveIntensity > 0) applyEmissiveFromBaseColor(materials, emissiveIntensity);
 
   const root = new THREE.Group();
   root.name = 'Character';
@@ -191,6 +205,22 @@ async function applyBaseColorMap(materials: THREE.MeshStandardMaterial[], url: s
     applied++;
   }
   console.log(`character skin: ${url.split('/').pop()} applied to ${applied} material(s)`);
+}
+
+/**
+ * Use each material's own base colour map as its emission map.
+ *
+ * Set after any base colour override, so a swapped-in atlas glows as itself
+ * rather than as the one it replaced.
+ */
+function applyEmissiveFromBaseColor(materials: THREE.MeshStandardMaterial[], intensity: number) {
+  for (const m of materials) {
+    if (!m.map) continue;
+    m.emissiveMap = m.map;
+    m.emissive.setScalar(1);          // white, so the map supplies all the colour
+    m.emissiveIntensity = intensity;
+    m.needsUpdate = true;
+  }
 }
 
 export interface CharacterLights {
