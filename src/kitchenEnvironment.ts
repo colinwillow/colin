@@ -322,6 +322,102 @@ export interface SwayConfig {
   maxDeg: number;
 }
 
+/**
+ * The same sway, driven by touch instead of a mouse.
+ *
+ * `pointermove` is useless on a phone — it only fires while a finger is down, so
+ * the desktop version would sit dead until tapped and then lurch. Two inputs
+ * replace it:
+ *
+ * - **Tilt**, the closest thing to the desktop effect, since it needs no
+ *   interaction at all. iOS 13+ hides `deviceorientation` behind a permission
+ *   that can only be requested from a real user gesture, so `requestTilt` has to
+ *   be called from a tap. Android and older iOS just work.
+ * - **Drag**, which always works. It decays back to centre when released so a
+ *   swipe reads as a nudge rather than a camera the viewer now has to manage.
+ */
+export function addTouchSway(
+  camera: THREE.Camera,
+  config: SwayConfig = { maxDeg: 4 },
+  dom: HTMLElement | Window = window,
+) {
+  const base = camera.quaternion.clone();
+  const target = new THREE.Vector2();
+  const cur = new THREE.Vector2();
+  const euler = new THREE.Euler();
+  const q = new THREE.Quaternion();
+
+  let dragging = false;
+  let dragStart: { x: number; y: number } | null = null;
+  let tilting = false;
+  /** Tilt is relative to however the phone is being held when it first reports. */
+  let restBeta: number | null = null;
+  let restGamma: number | null = null;
+
+  const el = dom as HTMLElement;
+  el.addEventListener('pointerdown', ((e: PointerEvent) => {
+    // Any pointer, not just touch: this sway is only installed on the touch
+    // tiers anyway, and excluding the mouse made ?quality=mobile-ktx2
+    // undraggable on a desktop, which is exactly how it gets checked.
+    dragging = true;
+    dragStart = { x: e.clientX, y: e.clientY };
+  }) as EventListener, { passive: true });
+
+  el.addEventListener('pointermove', ((e: PointerEvent) => {
+    if (!dragging || !dragStart) return;
+    // Full deflection for a drag across a third of the screen.
+    const span = Math.min(window.innerWidth, window.innerHeight) / 3;
+    target.set(
+      THREE.MathUtils.clamp((e.clientX - dragStart.x) / span, -1, 1),
+      THREE.MathUtils.clamp((e.clientY - dragStart.y) / span, -1, 1),
+    );
+  }) as EventListener, { passive: true });
+
+  const release = () => { dragging = false; dragStart = null; if (!tilting) target.set(0, 0); };
+  el.addEventListener('pointerup', release, { passive: true });
+  el.addEventListener('pointercancel', release, { passive: true });
+
+  const onTilt = (e: DeviceOrientationEvent) => {
+    if (dragging || e.beta === null || e.gamma === null) return;
+    if (restBeta === null) { restBeta = e.beta; restGamma = e.gamma; return; }
+    tilting = true;
+    // 20 degrees of phone tilt for full deflection.
+    target.set(
+      THREE.MathUtils.clamp((e.gamma - restGamma!) / 20, -1, 1),
+      THREE.MathUtils.clamp((e.beta - restBeta) / 20, -1, 1),
+    );
+  };
+
+  type PermissionCapable = { requestPermission?: () => Promise<PermissionState> };
+  const orientation = window.DeviceOrientationEvent as unknown as PermissionCapable | undefined;
+
+  /** Call from a tap. Resolves false when tilt is unavailable or refused. */
+  const requestTilt = async (): Promise<boolean> => {
+    if (!orientation) return false;
+    if (typeof orientation.requestPermission === 'function') {
+      try {
+        if ((await orientation.requestPermission()) !== 'granted') return false;
+      } catch { return false; }
+    }
+    window.addEventListener('deviceorientation', onTilt);
+    return true;
+  };
+
+  /** Re-centre the tilt origin on however the phone is held right now. */
+  const recentreTilt = () => { restBeta = null; restGamma = null; };
+
+  const update = () => {
+    const k = THREE.MathUtils.degToRad(config.maxDeg);
+    // Slower than the mouse version: a phone is never quite still, and chasing
+    // it one-to-one reads as drift rather than as a held shot.
+    cur.lerp(target, dragging ? 0.15 : 0.04);
+    euler.set(-cur.y * k * 0.5, -cur.x * k, 0, 'YXZ');
+    camera.quaternion.copy(base).multiply(q.setFromEuler(euler));
+  };
+
+  return { update, requestTilt, recentreTilt, get tilting() { return tilting; } };
+}
+
 /** Tiny "breathing" camera sway that follows the mouse (a few degrees at most). */
 export function addCameraSway(
   camera: THREE.Camera,

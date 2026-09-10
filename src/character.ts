@@ -13,6 +13,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 
 export interface Character {
   /** Move and turn this; the model inside is scaled and floor-aligned. */
@@ -65,6 +66,11 @@ export interface LoadCharacterOptions {
    */
   opaque?: boolean;
   /**
+   * Needed only to transcode a KTX2 skin — `detectSupport` has to ask the GPU
+   * which compressed formats it can take.
+   */
+  renderer?: THREE.WebGLRenderer;
+  /**
    * The room's HDR probe. Assigning it per-material is what makes
    * `envMapIntensity` below take effect: three overwrites that uniform with
    * `scene.environmentIntensity` for any material whose own envMap is null.
@@ -81,16 +87,21 @@ export async function loadCharacter(
   url: string,
   {
     height = 1.75, envMap, envMapIntensity = 1, idle = 'idle_neutral_00',
-    baseColorMap, emissiveIntensity = 0, roughness, opaque = true, dracoPath,
+    baseColorMap, emissiveIntensity = 0, roughness, opaque = true,
+    renderer, dracoPath,
   }: LoadCharacterOptions = {},
 ): Promise<Character> {
   const loader = new GLTFLoader();
-  // Not needed by colin_slim, but the other bodies are Draco-compressed.
   const draco = new DRACOLoader();
   if (dracoPath) draco.setDecoderPath(dracoPath);
   loader.setDRACOLoader(draco);
+  // The mobile build ships his skin as KTX2, which stays compressed on the GPU:
+  // 2.8 MB against 21.3 MB for the same 2K atlas as RGBA8.
+  const ktx2 = renderer ? new KTX2Loader().detectSupport(renderer) : null;
+  if (ktx2) loader.setKTX2Loader(ktx2);
   const gltf = await loader.loadAsync(url);
   draco.dispose();
+  ktx2?.dispose();
 
   const model = gltf.scene;
   model.updateMatrixWorld(true);

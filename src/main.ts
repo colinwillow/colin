@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import GUI from 'three/addons/libs/lil-gui.module.min.js';
 import {
-  loadKitchen, addCameraSway, fovForLens, lensForFov,
+  loadKitchen, addCameraSway, addTouchSway, fovForLens, lensForFov,
   type SwayConfig, type FramingMode,
 } from './kitchenEnvironment';
 import { loadCharacter, createCharacterLights, type Character, type CharacterLights } from './character';
@@ -69,7 +69,8 @@ try {
 
   // He faces +z, back to the stove, looking at the camera.
   label.textContent = 'Loading Colin';
-  const colin = await loadCharacter(`${ASSETS}character/colin_stylized_01.glb`, {
+  const colin = await loadCharacter(`${ASSETS}character/${settings.characterGlb}`, {
+    renderer,
     // Larger than life on purpose: at a measured 1.75 m he reads as a small
     // figure at the back of a wide room. Colin's reference has him with more
     // presence than that.
@@ -80,8 +81,9 @@ try {
     // probe gets no such compensation, so he needs it here or he sits well below
     // the room he is standing in.
     envMapIntensity: 1,
-    // The GLB embeds a skin, but this lighter repaint replaces it.
-    baseColorMap: `${ASSETS}character/Mat_diffuse_lighter.webp`,
+    // Desktop overrides the GLB's darker skin with the lighter repaint. The
+    // mobile GLB has it baked in already, so it overrides nothing.
+    baseColorMap: settings.characterSkin && `${ASSETS}character/${settings.characterSkin}`,
     // Colin's Blender setup for this room: the diffuse fed back as 50% emission,
     // roughness 0.8.
     emissiveIntensity: 0.65,
@@ -107,10 +109,22 @@ try {
   if (settings.lensMm !== undefined) kitchen.framing.referenceFov = fovForLens(settings.lensMm);
   setForegroundVisible(kitchen.room, false);
 
-  // Off on touch: pointermove only fires there while a finger is down, so the
-  // camera would jump on tap instead of breathing.
-  const sway: SwayConfig = { maxDeg: settings.sway ? 2.5 : 0 };
-  const updateSway = settings.sway ? addCameraSway(camera, window, sway) : () => {};
+  // Touch gets a bigger throw than the mouse: tilt and drag are coarser inputs,
+  // and 2.5 degrees is imperceptible on a phone.
+  const sway: SwayConfig = { maxDeg: settings.sway === 'touch' ? 5 : 2.5 };
+  const touch = settings.sway === 'touch' ? addTouchSway(camera, sway) : null;
+  const updateSway = touch ? touch.update : addCameraSway(camera, window, sway);
+
+  if (touch) {
+    // iOS only hands out deviceorientation from inside a real gesture, so the
+    // first tap asks. Drag works regardless, and until this resolves.
+    const askOnce = async () => {
+      document.removeEventListener('pointerdown', askOnce);
+      const granted = await touch.requestTilt();
+      console.log(granted ? 'tilt enabled' : 'tilt unavailable — drag to look around');
+    };
+    document.addEventListener('pointerdown', askOnce, { once: true });
+  }
 
   const resize = () => {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, settings.maxPixelRatio));
@@ -154,7 +168,7 @@ try {
 
   // Debug handles. From the devtools console: kitchen.interactive.Fridge_Door,
   // kitchen.lightmapped[0].lightMapIntensity, new THREE.Raycaster(), ...
-  Object.assign(window, { kitchen, colin, THREE });
+  Object.assign(window, { kitchen, colin, touch, THREE });
 
   loading.classList.add('done');
   document.body.classList.add('ready');

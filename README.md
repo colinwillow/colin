@@ -277,11 +277,17 @@ rather than shinier.
 Three, chosen by `src/quality.ts` at startup and overridable with
 `?quality=desktop` / `mobile` / `mobile-ktx2`. See MOBILE.md.
 
-| set | download | est. GPU | who gets it |
+| set | download | est. GPU (room + Colin) | who gets it |
 |---|---|---|---|
-| `desktop` | 18.0 MB | ~1387 MB | fine pointer |
-| `mobile` | 14.4 MB | ~382 MB | comparison only |
-| **`mobile-ktx2`** | **23.7 MB** | **~95 MB** | phones and iPads |
+| `desktop` | 18.0 MB | ~1387 + 21 MB | fine pointer |
+| `mobile` | 14.4 MB | ~382 + 21 MB | comparison only |
+| **`mobile-ktx2`** | **23.5 MB** | **~95 + 5 MB** | phones and iPads |
+
+Colin is in the KTX2 pass too — `colin_stylized_01_ktx2.glb`, with the lighter
+skin baked in rather than overridden at runtime, which also spares a phone
+decoding the original 2K atlas just to throw it away. His skin as ETC1S costs
+5 MB against 21 MB as RGBA8. `scripts/bake-character-skin.mjs` does the baking
+step; the rest is the same ETC1S command as the room.
 
 GPU memory is what blanks a phone browser, and WebP does nothing for it — a WebP
 texture is still full RGBA once decoded. KTX2 stays compressed on the GPU, which
@@ -377,6 +383,22 @@ back-wall furniture, not the near table.
 `addCameraSway(camera, dom, config)` returns an `update()` function to call every
 frame. It adds a small mouse-follow rotation, 2.5° by default; mutate
 `config.maxDeg` to change it live.
+
+On touch, `pointermove` only fires while a finger is down, so that version would
+sit dead and then lurch on tap. `addTouchSway` replaces it with two inputs and a
+bigger 5° throw, since tilt and drag are coarser than a cursor:
+
+- **Tilt**, the real analogue of the mouse effect since it needs no interaction.
+  iOS 13+ only hands out `deviceorientation` from inside a user gesture, so the
+  first tap calls `requestTilt()`. Tilt is measured relative to however the phone
+  was being held when it first reported, not to absolute level.
+- **Drag**, which always works, including where tilt is refused. It decays back
+  to centre on release, so a swipe reads as a nudge rather than a camera the
+  viewer now has to manage.
+
+*Testing this headless:* software rendering runs about one frame every two
+seconds, and the sway lerps per frame — a drag looks like it did nothing unless
+you wait several seconds for the frames to actually arrive.
 
 ## Interactive objects
 

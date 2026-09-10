@@ -48,10 +48,11 @@ export interface QualitySettings {
   /** Anisotropic filtering cap. 16 on a phone costs bandwidth for little gain. */
   maxAnisotropy: number;
   /**
-   * Mouse-follow sway. `pointermove` only fires on a touch screen while a finger
-   * is down, so on a phone the camera would lurch on tap rather than breathe.
+   * Which sway to use. `mouse` follows the cursor; `touch` uses device tilt where
+   * it is allowed and drag otherwise, because `pointermove` on a touch screen
+   * only fires while a finger is down and would lurch on tap rather than breathe.
    */
-  sway: boolean;
+  sway: 'mouse' | 'touch';
   /**
    * 35mm-equivalent focal length, or undefined to keep the GLB's own 24 mm.
    *
@@ -63,6 +64,14 @@ export interface QualitySettings {
    * framed in Blender.
    */
   lensMm?: number;
+  /** Which character GLB to load. */
+  characterGlb: string;
+  /**
+   * Skin to load over whatever the GLB carries, or undefined to use its own.
+   * The KTX2 build has the lighter atlas baked in, so it overrides nothing —
+   * which also spares a phone decoding the original just to throw it away.
+   */
+  characterSkin?: string;
 }
 
 export const QUALITY: Record<Quality, QualitySettings> = {
@@ -70,7 +79,9 @@ export const QUALITY: Record<Quality, QualitySettings> = {
     manifest: 'kitchen_lightmaps.json',
     maxPixelRatio: 2,
     maxAnisotropy: Infinity,
-    sway: true,
+    sway: 'mouse',
+    characterGlb: 'colin_stylized_01.glb',
+    characterSkin: 'Mat_diffuse_lighter.webp',
   },
   /**
    * What phones actually get. Same room again with every texture as KTX2 —
@@ -85,14 +96,17 @@ export const QUALITY: Record<Quality, QualitySettings> = {
     manifest: 'kitchen_lightmaps_mobile_ktx2.json',
     maxPixelRatio: 1.5,
     maxAnisotropy: 4,
-    sway: false,
+    sway: 'touch',
     lensMm: 16,
+    characterGlb: 'colin_stylized_01_ktx2.glb',
   },
   mobile: {
     manifest: 'kitchen_lightmaps_mobile.json',
     maxPixelRatio: 1.5,
     maxAnisotropy: 4,
-    sway: false,
+    sway: 'touch',
     lensMm: 16,
+    characterGlb: 'colin_stylized_01.glb',
+    characterSkin: 'Mat_diffuse_lighter.webp',
   },
 };
