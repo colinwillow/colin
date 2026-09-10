@@ -49,22 +49,21 @@ history grows the repo.
 
 ### Re-exporting the room from Blender
 
-The manifest's `glb` field names the export in use, so a new one is dropped in
-and pointed at. Two exporter checkboxes matter, and `kitchen_room_02.glb` was
-exported without either:
+The manifest's `glb` field names the export in use, so a new one is dropped into
+`public/kitchen/` and pointed at. Two exporter checkboxes are easy to miss:
 
-- **Include > Cameras.** Without it the GLB has no `Camera_Wide` and the loader
-  falls back to `cameraFallback` in the manifest — a copy of the same transform,
-  with a console warning. The framing is identical, but it is a copy that can
-  drift from the .blend, so prefer shipping the real camera.
-- **Include > Custom Properties.** These carry the `lightmap_atlas` tag on each
-  node. Without them the loader falls back to the manifest's `meshes` map, which
-  currently covers all 72 lightmapped meshes — but a mesh added later and absent
-  from that map would silently render unlit.
+- **Include > Cameras**, or the GLB has no `Camera_Wide` and the loader falls
+  back to `cameraFallback` in the manifest — the same transform, but a copy that
+  can drift from the .blend. It warns in the console when this happens.
+- **Include > Custom Properties**, which carry each node's `lightmap_atlas` tag.
+  Without them the loader falls back to the manifest's `meshes` map. That map
+  covers all 72 lightmapped meshes today, but a mesh added later and missing from
+  it would silently render unlit.
 
-Neither is fatal today (verified: 90 lightmapped materials, nothing with a
-lightmap UV left unlit, all 13 interactive objects resolving), but ticking both
-makes the GLB self-describing again.
+Both are on in the current export. A quick check after any re-export: the console
+line on load should name `Camera_Wide` with no fallback warning, report 90
+lightmapped materials, and `window.kitchen.interactive` should have no undefined
+entries.
 
 To compare a new export against the current one without rebuilding, append
 `?glb=<file>.glb` — it loads that file from `public/kitchen/` instead.
@@ -124,16 +123,15 @@ In three.js terms:
 
 ## Cameras
 
-`kitchen_room_02.glb` ships no cameras, so the view currently comes from
-`cameraFallback` in the manifest: position `(-0.36, 1.25, 4.9)`, no rotation,
-53.13° vertical FOV, 3:2 — `Camera_Wide` from the original export, reproduced
-exactly. Restoring the real cameras is one export checkbox (see above).
+The GLB carries two cameras, both as **root nodes** of the scene. three names the
+resulting object after the glTF *camera* (`Cam_Wide`, `Cam_Main`) while keeping
+the node name in `userData.name`, so the loader matches on the object name, its
+`userData.name`, or its parent's — matching only on the parent silently falls
+through to `gltf.cameras[0]`, which is the closeup.
 
-When the GLB does carry them, both sit as **root nodes** of the scene, and three
-names the resulting object after the glTF *camera* (`Cam_Wide`, `Cam_Main`) while
-keeping the node name in `userData.name`. So the loader matches on the object
-name, its `userData.name`, or its parent's — matching only on the parent silently
-falls through to `gltf.cameras[0]`, which is the closeup.
+If an export ever ships without cameras, `cameraFallback` in the manifest stands
+in: position `(-0.36, 1.25, 4.9)`, no rotation, 53.13° vertical FOV, 3:2. It is a
+safety net that warns loudly, not the intended path.
 
 - **`Camera_Wide`** is the main view: a 24 mm lens, framed on a 3:2 reference image.
 - **`Camera_Closeup`** is a tighter view of the stove-and-fridge wall.
@@ -215,9 +213,10 @@ as the camera swayed. Depth precision is not the lever: this room already gets
 about 0.01 mm of depth resolution at that distance from a 24-bit buffer, and these
 depths were equal rather than merely close.
 
-`kitchen_room_02.glb` fixes it in the model. Probing 2,849 rays through the sink
-region: 173 hit coincident surfaces in the first export, **0** in the second.
-Keep trim a hair proud of the surface behind it rather than flush.
+`kitchen_room_02.glb` fixes it in the model, and that is the right place for it:
+a load-time pass that pushed coplanar patches apart was tried and dropped, having
+resolved 42 of the 173 cases where the model fix resolved all of them. Keep trim a
+hair proud of the surface behind it rather than flush.
 
 To check for this after a re-export, the debug handles `window.kitchen` and
 `window.THREE` are exposed — raycast a region and look for hits whose distances
