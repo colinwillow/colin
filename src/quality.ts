@@ -72,6 +72,10 @@ export interface QualitySettings {
    * which also spares a phone decoding the original just to throw it away.
    */
   characterSkin?: string;
+  /** Which head GLB. The KTX2 one carries its face textures compressed. */
+  headGlb: string;
+  /** Face textures by material name, or undefined when the GLB carries them. */
+  headSkins?: Record<string, string>;
 }
 
 export const QUALITY: Record<Quality, QualitySettings> = {
@@ -82,6 +86,8 @@ export const QUALITY: Record<Quality, QualitySettings> = {
     sway: 'mouse',
     characterGlb: 'colin_stylized_01.glb',
     characterSkin: 'Mat_diffuse_lighter.webp',
+    headGlb: 'colin_head.glb',
+    headSkins: { colin_main: 'colin_head.webp', hair: 'colin_hair.webp', eyes: 'colin_eyes.webp' },
   },
   /**
    * What phones actually get. Same room again with every texture as KTX2 —
@@ -99,6 +105,9 @@ export const QUALITY: Record<Quality, QualitySettings> = {
     sway: 'touch',
     lensMm: 16,
     characterGlb: 'colin_stylized_01_ktx2.glb',
+    // Three 2K face textures are 64 MB of GPU as RGBA8 against 8 MB as ETC1S —
+    // more than the room and the body together were saving.
+    headGlb: 'colin_head_ktx2.glb',
   },
   mobile: {
     manifest: 'kitchen_lightmaps_mobile.json',
@@ -108,5 +117,7 @@ export const QUALITY: Record<Quality, QualitySettings> = {
     lensMm: 16,
     characterGlb: 'colin_stylized_01.glb',
     characterSkin: 'Mat_diffuse_lighter.webp',
+    headGlb: 'colin_head.glb',
+    headSkins: { colin_main: 'colin_head.webp', hair: 'colin_hair.webp', eyes: 'colin_eyes.webp' },
   },
 };

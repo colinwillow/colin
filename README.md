@@ -130,9 +130,18 @@ skin weight on the head bone into a `headW` attribute and the fragment shader
 discards anything above `cut`. Vertices only partly bound to the head survive,
 which is what keeps the collar.
 
-This is the stopgap: two files, one mostly wasted, and the head textures loaded
-separately because `colin_head.glb` has four materials and zero images. A body
-exported with its head as its own material makes the cut a one-line hide.
+This is the stopgap: two files, one mostly wasted. A body exported with its head
+as its own material makes the cut a one-line hide.
+
+`colin_head.glb` has four materials and zero images, so the face textures are
+separate. Desktop loads them alongside; mobile gets `colin_head_ktx2.glb` with
+them baked in and compressed, because three 2K faces are **64 MB** of GPU as
+RGBA8 against **8 MB** as ETC1S — more than the room and body together were
+saving. `scripts/bake-head-textures.mjs` builds it.
+
+The fit is measured from his pose, so the pose has to be pinned: `mixer.setTime(0)`
+rather than `update(0)`, or the head comes out a different size on mobile than on
+desktop depending on which frame the load happened to reach.
 
 **Four things about the fit, each of which produced a different wrong answer:**
 
@@ -317,7 +326,7 @@ Three, chosen by `src/quality.ts` at startup and overridable with
 |---|---|---|---|
 | `desktop` | 18.0 MB | ~1387 + 21 MB | fine pointer |
 | `mobile` | 14.4 MB | ~382 + 21 MB | comparison only |
-| **`mobile-ktx2`** | **23.5 MB** | **~95 + 5 MB** | phones and iPads |
+| **`mobile-ktx2`** | **26.4 MB** | **~117 MB total** | phones and iPads |
 
 Colin is in the KTX2 pass too — `colin_stylized_01_ktx2.glb`, with the lighter
 skin baked in rather than overridden at runtime, which also spares a phone

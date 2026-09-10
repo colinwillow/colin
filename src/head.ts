@@ -272,7 +272,11 @@ export async function graftHead(
     // head behind his shoulder; measuring in the bind pose instead put the scale
     // out by the armature's 100x centimetre factor, which Skeleton.pose()
     // restores and the animated pose does not have.
-    character.mixer.update(0);
+    // setTime, not update(0): the fit is measured from his pose, so measuring at
+    // "whatever frame the load happened to reach" made the head come out a
+    // different size on mobile than on desktop. Frame 0 of the current clip is
+    // the same everywhere.
+    character.mixer.setTime(0);
     character.root.updateWorldMatrix(true, true);
     const targetBox = bodyHeadBounds(character, fit.cut);
     if (!targetBox) return;
@@ -337,7 +341,6 @@ export async function graftHead(
   };
   const apply = solve;
   solve();
-  const measuredScale = anchor.scale.y;
 
   const setMorph = (name: string, value: number) => {
     const i = morphs[name];
@@ -348,5 +351,9 @@ export async function graftHead(
     for (const mesh of meshes) mesh.morphTargetInfluences?.fill(0);
   };
 
-  return { model, meshes, morphs, setMorph, clearMorphs, fit, apply, measuredScale };
+  // A getter, not a snapshot: the solve reruns on every fit change.
+  return {
+    model, meshes, morphs, setMorph, clearMorphs, fit, apply,
+    get measuredScale() { return anchor.scale.y; },
+  };
 }

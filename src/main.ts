@@ -49,6 +49,12 @@ const errorBox = document.getElementById('error')!;
 const { quality, reason } = pickQuality();
 const settings = QUALITY[quality];
 
+// three's loaders report a bare "Load failed" on Safari with no clue which file
+// it was, which is useless from a phone. Remember the last URL that failed so the
+// overlay can name it.
+let lastFailedUrl = '';
+THREE.DefaultLoadingManager.onError = (url) => { lastFailedUrl = url; };
+
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, settings.maxPixelRatio));
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -116,18 +122,17 @@ try {
   label.textContent = 'Loading his face';
   let head: GraftedHead | null = null;
   try {
-    head = await graftHead(colin, `${ASSETS}character/colin_head.glb`, {
+    head = await graftHead(colin, `${ASSETS}character/${settings.headGlb}`, {
       renderer,
       envMap: kitchen.envMap,
       envMapIntensity: 1,
       emissiveIntensity: 0.65,
       roughness: 0.8,
       fit: { ...DEFAULT_HEAD_FIT },
-      skins: {
-        colin_main: `${ASSETS}character/colin_head.webp`,
-        hair: `${ASSETS}character/colin_hair.webp`,
-        eyes: `${ASSETS}character/colin_eyes.webp`,
-      },
+      // Only where the GLB does not already carry them.
+      skins: settings.headSkins && Object.fromEntries(
+        Object.entries(settings.headSkins).map(([m, f]) => [m, `${ASSETS}character/${f}`]),
+      ),
     });
     console.log(`head grafted — ${Object.keys(head.morphs).length} blendshapes, ` +
       `scale ${head.measuredScale.toFixed(3)}`);
@@ -220,8 +225,10 @@ try {
   const message = err instanceof Error ? err.message : String(err);
   label.textContent = 'Could not load the kitchen';
   bar.style.display = 'none';
-  errorBox.textContent = message;
-  console.error(err);
+  errorBox.textContent = lastFailedUrl
+    ? `${message}\n\nwhile loading:\n${lastFailedUrl}`
+    : message;
+  console.error(err, lastFailedUrl);
 }
 
 /**
