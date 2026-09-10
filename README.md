@@ -20,25 +20,29 @@ Copy these into `public/kitchen/`, keeping the `lightmaps/` subfolder:
 
 | File | Size | What it is |
 |---|---|---|
-| `kitchen_room.glb` | ~65 MB | The room: 82 meshes, baked color/roughness/normal textures, two cameras |
-| `lightmaps/LM_Arch.png` | ~18 MB | Baked light and shadow for walls, floor, ceiling, beams, tile, rugs |
-| `lightmaps/LM_Cabinetry.png` | ~11 MB | Baked light for cabinets, counters, shelves, stove, table |
-| `lightmaps/LM_Props.png` | ~3 MB | Baked light for pottery, plants, books, jars, and other props |
-| `lightmaps/LM_Interactive.png` | ~4 MB | Baked light for the movable objects (at their rest positions) |
-| `kitchen_probe.hdr` | ~5 MB | 360° HDR panorama rendered from the middle of the room |
+| `kitchen_room.glb` | ~4.9 MB | The room: 82 meshes, two cameras. Draco-compressed geometry, WebP textures (`EXT_texture_webp`) |
+| `lightmaps/LM_Arch.webp` | ~1.6 MB | Baked light and shadow for walls, floor, ceiling, beams, tile, rugs |
+| `lightmaps/LM_Cabinetry.webp` | ~1.2 MB | Baked light for cabinets, counters, shelves, stove, table |
+| `lightmaps/LM_Props.webp` | ~0.7 MB | Baked light for pottery, plants, books, jars, and other props |
+| `lightmaps/LM_Interactive.webp` | ~0.4 MB | Baked light for the movable objects (at their rest positions) |
+| `kitchen_probe.hdr` | ~5.4 MB | 360° HDR panorama rendered from the middle of the room |
 | `kitchen_lightmaps.json` | tiny | Manifest: atlas files, mesh-to-atlas map, encoding, exposure, interactive names |
 | `kitchenEnvironment.js` | — | Loader. Goes in `src/`, not `public/` |
 
-Do not copy `*_raw.exr` (source HDR lightmaps, ~500 MB total) or `kitchen_room.fbx` (Cinema 4D test export).
+About 14 MB total. On Colin's machine the lightmaps live in `export/lightmaps_web/`; copy only the `.webp` files into `public/kitchen/lightmaps/`.
 
-**Git:** the GLB exceeds GitHub's 50 MB warning threshold. Set up Git LFS for `*.glb`, `*.hdr`, and `public/kitchen/**/*.png` before the first commit.
+Do not copy `kitchen_room_full.glb` (66 MB uncompressed backup), the lightmap PNGs, `lightmaps_raw/*.exr` (source HDR lightmaps, ~500 MB total), or `kitchen_room.fbx` (Cinema 4D test export).
+
+**Git:** every file is now well under GitHub's limits, so Git LFS is optional. It's still worth considering if the assets will be re-exported often, since binary history grows the repo.
+
+**Draco decoder:** the GLB's geometry is Draco-compressed, so three.js needs the decoder files. Copy `node_modules/three/examples/jsm/libs/draco/gltf/` into `public/draco/`. The loader looks there by default (the `dracoPath` option).
 
 ## How the lighting works
 
 Read this before changing any materials or adding lights.
 
 - **The room's lighting is baked into lightmaps.** Each lightmapped mesh has a second UV set (`TEXCOORD_1`). The loader assigns the right lightmap to every material using the `lightmap_atlas` value in the mesh's glTF extras (`userData.lightmap_atlas`), with the manifest as a fallback.
-- **Lightmap encoding.** The PNGs store `light / 8`, sRGB-encoded, so they fit 8-bit without clipping the window sunlight. Decode with `texture.colorSpace = SRGBColorSpace`, `texture.channel = 1`, `texture.flipY = false`, and `material.lightMapIntensity = 8 * Math.PI`. The π compensates for three.js dividing lightmap irradiance by π in the Lambert term.
+- **Lightmap encoding.** The WebP lightmaps store `light / 8`, sRGB-encoded, so they fit 8-bit without clipping the window sunlight. Decode with `texture.colorSpace = SRGBColorSpace`, `texture.channel = 1`, `texture.flipY = false`, and `material.lightMapIntensity = 8 * Math.PI`. The π compensates for three.js dividing lightmap irradiance by π in the Lambert term.
 - **Materials are cloned per mesh** before a lightmap is assigned, because one glTF material (for example the chair wood) can be shared by meshes that use different lightmap atlases.
 - **Metals, glass, and glowing objects have no lightmap.** That covers chrome, copper, brass, all glass, the LED strip, the pendant bulb, and the outdoor backdrop. They are lit by the environment map only.
 - **The HDR probe is `scene.environment`**, run through PMREM. It lights the character and provides reflections. Lightmapped materials use `envMapIntensity = 0.25` so they get reflections without being lit twice.
@@ -85,7 +89,7 @@ These objects' lightmaps were baked at their rest positions. When one moves far,
 ## First session tasks
 
 1. Scaffold Vite + TypeScript + three.js. Set up Git LFS before adding assets.
-2. Copy the assets into `public/kitchen/` and move the loader into `src/`, converting it to TypeScript.
+2. Copy the assets into `public/kitchen/`, copy the Draco decoder into `public/draco/`, and move the loader into `src/`, converting it to TypeScript.
 3. Create the renderer and scene, call `loadKitchen(renderer, scene, { basePath: '/kitchen/' })`, use the returned camera, and handle resize.
 4. Add the camera sway and a render loop.
 5. Load the character GLB, which Colin will provide from the Orb project. Place him at `(-0.3, 0, 1.7)` facing `+z` toward the camera, play an idle animation if one exists, and add a contact shadow.
@@ -107,7 +111,7 @@ These objects' lightmaps were baked at their rest positions. When one moves far,
 
 ## Later milestones
 
-1. **Mobile optimization.** Target roughly 10–20 MB total. Run the GLB through gltf-transform, for example `npx @gltf-transform/cli optimize kitchen_room.glb kitchen_room_opt.glb --compress meshopt --texture-compress webp`, and register `MeshoptDecoder` with `GLTFLoader`. Convert the lightmap PNGs to WebP or KTX2 separately; they are not inside the GLB. Keep them in sRGB and update the manifest. Consider 2K lightmaps on phones.
+1. **Mobile GPU memory.** Download size is already handled (Draco + WebP, ~14 MB total). WebP only shrinks the download, though: a 4K texture still takes about 64 MB of GPU memory once decoded, and there are several. For phones, convert textures to KTX2 (Basis Universal) with gltf-transform, which stays compressed on the GPU, and consider 2K versions of the 4K textures and lightmaps. Keep lightmaps in sRGB and update the manifest if their format changes.
 2. **Interactions.** Add sit anchors on the chairs, door hinge animations for the fridge and oven, pick-up targets for the pot, lid, mug, and pans, and pathing for the character.
 3. **Light switch.** Colin can bake a second lightmap set with the lights off. Crossfade between the two sets in a shader, or by swapping textures while fading intensity, and dim the pendant bulb's emissive at the same time.
 4. **Voice and visemes.** Possibly bring over the talking-character setup from Orb.
@@ -120,5 +124,5 @@ These objects' lightmaps were baked at their rest positions. When one moves far,
 - `kitchen_room_bake.blend` — baked textures, objects still separate.
 - `kitchen_room_export.blend` — merged by material; the FBX came from this one.
 - `kitchen_room_web.blend` — adds lightmap UVs and lightmap bake helpers; the GLB came from this one. Any re-bake should start here.
-- `textures_baked/` — baked material textures (already embedded in the GLB).
-- `export/` — everything listed under Assets.
+- `textures/` and `textures_baked/` — baked material textures (already embedded in the GLB).
+- `export/` — the web assets. Lightmaps are in `export/lightmaps_web/` (WebP for the app, PNG originals) and `export/lightmaps_raw/` (HDR EXR sources).
