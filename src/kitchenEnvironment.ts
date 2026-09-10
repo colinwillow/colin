@@ -63,6 +63,10 @@ export interface Kitchen {
 
 export interface LoadKitchenOptions {
   basePath?: string;
+  /** Which manifest to read; picks the whole asset set with it. */
+  manifest?: string;
+  /** Cap on anisotropic filtering for the lightmaps. */
+  maxAnisotropy?: number;
   /** Override three's bundled Draco decoder, e.g. '/draco/' or a CDN. */
   dracoPath?: string;
   /** Fraction 0..1, called as the pieces land. */
@@ -79,13 +83,19 @@ export async function loadKitchen(
   scene: THREE.Scene,
   // Default follows the deployed base ('/' in dev, '/<repo>/' on Pages) rather
   // than a bare '/', which would 404 under a subpath.
-  { basePath = `${import.meta.env.BASE_URL}kitchen/`, dracoPath, onProgress }: LoadKitchenOptions = {},
+  {
+    basePath = `${import.meta.env.BASE_URL}kitchen/`,
+    manifest: manifestFile = 'kitchen_lightmaps.json',
+    maxAnisotropy: anisotropyCap = Infinity,
+    dracoPath,
+    onProgress,
+  }: LoadKitchenOptions = {},
 ): Promise<Kitchen> {
   const step = (fraction: number, label: string) => onProgress?.(fraction, label);
 
   step(0, 'manifest');
-  const res = await fetch(basePath + 'kitchen_lightmaps.json');
-  if (!res.ok) throw new Error(`Could not fetch ${basePath}kitchen_lightmaps.json (${res.status})`);
+  const res = await fetch(basePath + manifestFile);
+  if (!res.ok) throw new Error(`Could not fetch ${basePath}${manifestFile} (${res.status})`);
   const manifest: KitchenManifest = await res.json();
 
   // ?glb=<file> loads a different export from the same folder, for comparing a
@@ -100,7 +110,7 @@ export async function loadKitchen(
 
   step(0.05, 'lightmaps');
   const texLoader = new THREE.TextureLoader();
-  const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
+  const maxAnisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), anisotropyCap);
   const lightmaps: Record<string, THREE.Texture> = {};
   await Promise.all(
     Object.entries(manifest.atlases).map(async ([key, file]) => {

@@ -100,5 +100,16 @@
   "probe": "kitchen_probe_mobile.hdr",
   "glb": "kitchen_room_mobile.glb",
   "camera": "Camera_Wide",
-  "exposure": 0.55
+  "exposure": 0.55,
+  "cameraFallback": {
+    "position": [
+      -0.36,
+      1.25,
+      4.9
+    ],
+    "fov": 53.1301,
+    "aspect": 1.5,
+    "near": 0.1,
+    "far": 1000
+  }
 }

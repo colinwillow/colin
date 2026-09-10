@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import GUI from 'three/addons/libs/lil-gui.module.min.js';
 import { loadKitchen, addCameraSway, type SwayConfig } from './kitchenEnvironment';
 import { loadCharacter, createCharacterLights, type Character, type CharacterLights } from './character';
+import { pickQuality, QUALITY } from './quality';
 
 /** On the rug in front of the stove, where the HDR probe was rendered. */
 export const CHARACTER_SPOT = new THREE.Vector3(-0.3, 0, 1.7);
@@ -19,9 +20,13 @@ const label = document.getElementById('label')!;
 const bar = document.querySelector<HTMLElement>('#bar > i')!;
 const errorBox = document.getElementById('error')!;
 
+// Phones cannot hold the desktop asset set — see MOBILE.md — so the whole set,
+// and a few renderer caps with it, are chosen before anything loads.
+const { quality, reason } = pickQuality();
+const settings = QUALITY[quality];
+
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-// Cap at 2: the room is texture-heavy and 3x on a phone buys nothing visible.
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, settings.maxPixelRatio));
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
@@ -30,6 +35,8 @@ const scene = new THREE.Scene();
 try {
   const kitchen = await loadKitchen(renderer, scene, {
     basePath: `${ASSETS}kitchen/`,
+    manifest: settings.manifest,
+    maxAnisotropy: settings.maxAnisotropy,
     onProgress: (fraction, what) => {
       bar.style.width = `${Math.round(fraction * 100)}%`;
       label.textContent = fraction >= 1 ? 'Ready' : `Loading ${what}`;
@@ -75,11 +82,13 @@ try {
   // renderer where the character pass would overwrite it.
   const roomExposure = { value: kitchen.manifest.exposure };
 
-  const sway: SwayConfig = { maxDeg: 2.5 };
-  const updateSway = addCameraSway(camera, window, sway);
+  // Off on touch: pointermove only fires there while a finger is down, so the
+  // camera would jump on tap instead of breathing.
+  const sway: SwayConfig = { maxDeg: settings.sway ? 2.5 : 0 };
+  const updateSway = settings.sway ? addCameraSway(camera, window, sway) : () => {};
 
   const resize = () => {
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, settings.maxPixelRatio));
     renderer.setSize(window.innerWidth, window.innerHeight);
     kitchen.resize(window.innerWidth, window.innerHeight);
   };
@@ -130,6 +139,10 @@ try {
   const drop = () => loading.remove();
   loading.addEventListener('transitionend', drop, { once: true });
   setTimeout(drop, 1500);
+  console.log(
+    `quality "${quality}" (${reason}) — ${settings.manifest}, ` +
+      `pixelRatio ${renderer.getPixelRatio()}, anisotropy cap ${settings.maxAnisotropy}`,
+  );
   console.log(
     `kitchen ready — camera "${camera.name}" (${camera.userData.name ?? '?'}), ` +
       `${lightmapped.length} lightmapped materials, ` +
