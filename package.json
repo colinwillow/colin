@@ -1,0 +1,22 @@
+{
+  "name": "kitchen-environment",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "screenshot": "node scripts/screenshot.mjs"
+  },
+  "dependencies": {
+    "three": "^0.185.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.2",
+    "@types/three": "^0.185.4",
+    "typescript": "^5.9.0",
+    "vite": "^6.0.0"
+  }
+}

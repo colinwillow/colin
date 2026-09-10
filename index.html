@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Kitchen</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0a09'/%3E%3Cpath d='M7 15h18v6a4 4 0 0 1-4 4H11a4 4 0 0 1-4-4z' fill='%235fc4bd'/%3E%3Crect x='5' y='12' width='22' height='3' rx='1.5' fill='%23c8a06a'/%3E%3C/svg%3E" />
+    <style>
+      :root { color-scheme: dark; }
+      html, body { margin: 0; height: 100%; background: #0b0a09; overflow: hidden; }
+      canvas { display: block; width: 100%; height: 100%; }
+
+      #loading {
+        position: fixed; inset: 0; display: grid; place-content: center; gap: 14px;
+        font: 500 13px/1.5 ui-sans-serif, system-ui, -apple-system, sans-serif;
+        letter-spacing: 0.08em; text-transform: uppercase; color: #8a8178;
+        background: #0b0a09; transition: opacity 0.7s ease; z-index: 10;
+      }
+      #loading.done { opacity: 0; pointer-events: none; }
+      #bar { width: 190px; height: 2px; background: #241f1b; overflow: hidden; }
+      #bar > i { display: block; height: 100%; width: 0%; background: #c8a06a; transition: width 0.25s ease; }
+      #error {
+        max-width: 44ch; color: #e0836f; text-transform: none; letter-spacing: 0;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap;
+      }
+      /* lil-gui sits top-right; keep it out of the way until the room is up */
+      .lil-gui.root { --width: 260px; opacity: 0; transition: opacity 0.5s ease 0.4s; }
+      body.ready .lil-gui.root { opacity: 1; }
+    </style>
+  </head>
+  <body>
+    <div id="loading">
+      <div id="label">Loading kitchen</div>
+      <div id="bar"><i></i></div>
+      <div id="error"></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
