@@ -10,6 +10,7 @@ import { createWander, DEFAULT_WANDER } from './wander';
 import { graftHead, DEFAULT_HEAD_FIT, type GraftedHead } from './head';
 import { loadCharacter, createCharacterLights, type Character, type CharacterLights } from './character';
 import { pickQuality, QUALITY } from './quality';
+import { createRoomLights, DEFAULT_ROOM_LIGHTS, type RoomLights } from './roomLights';
 import { createConversation, type Conversation } from './talk';
 
 /** On the rug in front of the stove, where the HDR probe was rendered. */
@@ -132,6 +133,12 @@ try {
   // renderer where the character pass would overwrite it.
   const roomExposure = { value: kitchen.manifest.exposure };
 
+  // The experiment: real lights instead of the bake. Off by default — this adds
+  // the lights to the room scene and leaves them hidden until the panel says so.
+  const roomLights = createRoomLights(renderer, kitchen.room, lightmapped,
+    { ...DEFAULT_ROOM_LIGHTS });
+  scene.add(roomLights.group);
+
   if (settings.lensMm !== undefined) kitchen.framing.referenceFov = fovForLens(settings.lensMm);
   setForegroundVisible(kitchen.room, false);
 
@@ -240,11 +247,11 @@ try {
     renderer.render(characterScene, camera);   // Colin, lit by his own rig
   });
 
-  buildTuningPanel(kitchen.manifest.exposure, lightmapped, colin, lights, look, roomExposure, kitchen, resize, wander, rig, head, talk);
+  buildTuningPanel(kitchen.manifest.exposure, lightmapped, colin, lights, look, roomExposure, kitchen, resize, wander, rig, head, talk, roomLights);
 
   // Debug handles. From the devtools console: kitchen.interactive.Fridge_Door,
   // kitchen.lightmapped[0].lightMapIntensity, new THREE.Raycaster(), ...
-  Object.assign(window, { renderer, kitchen, colin, wander, rig, head, talk, THREE });
+  Object.assign(window, { renderer, kitchen, colin, wander, rig, head, talk, roomLights, THREE });
 
   loading.classList.add('done');
   document.body.classList.add('ready');
@@ -295,6 +302,7 @@ function buildTuningPanel(
   rig: ReturnType<typeof createCameraRig>,
   head: GraftedHead | null,
   talk: Conversation,
+  roomLights: RoomLights,
 ) {
   const state = {
     exposure,
@@ -317,6 +325,21 @@ function buildTuningPanel(
   gui.add(state, 'environmentIntensity', 0, 3, 0.01)
     .name('probe (character)')
     .onChange((v: number) => { scene.environmentIntensity = v; });
+
+  /* Baked light versus real light, switchable. The bake is path-traced GI and
+     will almost certainly look better; what it cannot do is change, since it is
+     a photograph of one lighting state. Worth being able to see both. */
+  const relight = gui.addFolder('Lighting experiment');
+  const rl = roomLights.config;
+  relight.add(rl, 'enabled').name('real lights (bake off)').onChange(roomLights.apply);
+  relight.add(rl, 'ambient', 0, 3, 0.01).name('sky + bounce').onChange(roomLights.apply);
+  relight.add(rl, 'sun', 0, 8, 0.05).name('daylight').onChange(roomLights.apply);
+  relight.add(rl, 'sunAzimuthDeg', -180, 180, 1).name('daylight from °').onChange(roomLights.apply);
+  relight.add(rl, 'sunElevationDeg', 5, 85, 1).name('daylight height °').onChange(roomLights.apply);
+  relight.add(rl, 'bulb', 0, 30, 0.1).name('pendant bulb').onChange(roomLights.apply);
+  relight.add(rl, 'fill', 0, 2, 0.01).name('fourth wall fill').onChange(roomLights.apply);
+  relight.add(rl, 'envMapIntensity', 0, 2, 0.01).name('HDR probe').onChange(roomLights.apply);
+  relight.add(rl, 'shadows').name('sun shadows').onChange(roomLights.apply);
 
   const roam = gui.addFolder('Wandering');
   const w = wander.config;

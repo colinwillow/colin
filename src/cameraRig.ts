@@ -11,15 +11,25 @@
 import * as THREE from 'three';
 
 export interface RigConfig {
-  /** Degrees the camera turns toward whatever it is following. */
+  /** The most the camera will turn away from the baked framing, in degrees.
+   *
+   *  This is what decides how much room he gets. At the old 2.6° the shot barely
+   *  moved, so he could only ever be where the Blender framing already pointed —
+   *  a strip about as wide as the rug. Turning the camera properly is what makes
+   *  the rest of the floor usable. */
   followDeg: number;
+  /** How much of the angle to him the camera takes up. Below 1 so he still
+   *  crosses the frame as he walks instead of being pinned to the middle, which
+   *  reads as a tripod rather than a lock-on. */
+  followGain: number;
   /** Seconds to catch up. Long: the camera should lag him, not track him. */
   followLag: number;
   /** Degrees of mouse-follow sway. Desktop only — see the note on touch below. */
   swayDeg: number;
 }
 
-export const DEFAULT_RIG: RigConfig = { followDeg: 2.6, followLag: 1.1, swayDeg: 2.5 };
+export const DEFAULT_RIG: RigConfig =
+  { followDeg: 18, followGain: 0.8, followLag: 1.1, swayDeg: 2.5 };
 
 export interface CameraRig {
   update: (dt: number) => void;
@@ -68,9 +78,15 @@ export function createCameraRig(
       worldTarget.y += 1.1;
       localTarget.copy(worldTarget).sub(basePosition).applyQuaternion(inverseBase);
       const distance = Math.max(0.001, -localTarget.z);
+      /* The REAL angle to him, in radians, rather than a fraction of an
+         arbitrary 0.45 slope. That mattered once the camera was allowed to turn
+         properly: a normalised -1..1 says "he is far to the left" identically
+         whether that is 12° or 30°, so the camera undershot whenever he was
+         genuinely out at the edge of the room — which is the only time it needed
+         to do anything. */
       wanted.set(
-        THREE.MathUtils.clamp(localTarget.x / distance / 0.45, -1, 1),
-        THREE.MathUtils.clamp(localTarget.y / distance / 0.45, -1, 1),
+        Math.atan2(localTarget.x, distance),
+        Math.atan2(localTarget.y, distance),
       );
     } else {
       wanted.set(0, 0);
@@ -84,6 +100,13 @@ export function createCameraRig(
 
     const f = THREE.MathUtils.degToRad(config.followDeg);
     const s = THREE.MathUtils.degToRad(config.swayDeg);
+    // `follow` is now an angle, so the gain and the cap are the whole story:
+    // take this much of the way toward him, and never more than this far off the
+    // baked framing.
+    const yaw = THREE.MathUtils.clamp(follow.x * config.followGain, -f, f);
+    // Pitch stays a fraction of the yaw budget: the room is wide and short, and
+    // a camera that tilts as much as it pans looks seasick.
+    const pitch = THREE.MathUtils.clamp(follow.y * config.followGain, -f * 0.25, f * 0.25);
     /* The yaw is NEGATED, and that was the bug. A camera looks down -Z, so a
        positive rotation about Y swings its forward vector toward -X — it turns
        LEFT. He walks right, `follow.x` goes positive, and the camera turned away
@@ -92,8 +115,8 @@ export function createCameraRig(
        Pitch is not negated, because a positive rotation about X does tilt the
        view up, which is the way you want it when he is high in frame. */
     euler.set(
-      follow.y * f * 0.6 - sway.y * s * 0.5,
-      -follow.x * f - sway.x * s,
+      pitch - sway.y * s * 0.5,
+      -yaw - sway.x * s,
       0,
       'YXZ',
     );

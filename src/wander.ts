@@ -47,9 +47,23 @@ export const DEFAULT_WANDER: WanderConfig = {
    * counters and the stove across all of it (raycast, since the GLB is merged by
    * material and bounding boxes span the room), and at every corner he is whole
    * in frame on both a portrait phone and a landscape desktop — the desktop is
-   * what caps the near edge, since his feet leave the bottom there first. He now
-   * stays between 2.9 m and 4.0 m from the lens. */
-  area: { minX: -1.2, maxX: 0.5, minZ: 1.0, maxZ: 2.0 },
+   * what caps the near edge, since his feet leave the bottom there first.
+   *
+   * The width is what the camera bought. It could not be had before: A fixed shot can only cover the strip the Blender framing points at,
+   * so the rectangle was a rug-width corridor and he spent his time pacing it.
+   * The limit was never the floor — the clear floor runs from x -2.25 to +2.0 —
+   * it was that anything outside the frame may as well not exist. With the rig
+   * panning up to 18° he can use the width, and the near edge is still what
+   * caps the depth, since that is a matter of his feet leaving the bottom of a
+   * landscape frame and no amount of panning fixes it.
+   *
+   * Every bound is his SHOULDERS, not his centre. The clear floor runs to -2.25
+   * and +1.0 here, but he is about 0.6 m across, so walking his origin to the
+   * edge of the clear floor puts an arm through a cabinet — and the far edge is
+   * 1.2 rather than 1.0 for the same reason, checked by sampling the floor at
+   * four points around him instead of one underneath him: at 1.0 he had his
+   * shoulder in the stove. */
+  area: { minX: -1.95, maxX: 0.65, minZ: 1.2, maxZ: 2.0 },
   speed: 0.62,
   turnSpeed: 120,
   // He was standing 12-13 seconds between two-second walks, which on a phone

@@ -40,6 +40,7 @@ src/listen.ts                   the browser's speech recognition, and when to de
 src/brain.ts                    the Worker chat call, streamed
 src/voice.ts                    the ElevenLabs clone: chunking, scheduling, the audio graph
 src/visemes.ts                  text and character timings -> mouth shapes -> morph targets
+src/roomLights.ts               the experiment: real lights with the bake switched off
 VISEMES.md                      the nine shapes to sculpt, and why
 viseme-reference.png            all ten mouth positions, rendered
 public/kitchen/                 the baked assets, served verbatim
@@ -463,6 +464,16 @@ across its length — so they are in-place cycles and the position is ours to
 drive. Nothing ties the clip's stride to the distance covered, so `speed` is a
 number picked by eye; too high and his feet skate.
 
+**How wide he can roam is a camera question, not a floor question.** The floor
+was never the limit — it runs clear from x -2.25 to +1.0 — but anything outside
+the frame may as well not exist, and at the old 2.6° of follow the shot barely
+moved, so he was stuck in a rug-width corridor where the Blender framing already
+pointed. The rig now pans up to 18° and takes 80% of the angle to him, which
+gives him 2.6 m instead of 1.7 m and, as a bonus, shows off a side of the room
+the fixed shot never revealed: the window over the sink, the pendant, the left
+counter run. The near edge still caps the depth, because that is his feet
+leaving the bottom of a landscape frame and no amount of panning fixes it.
+
 **The rectangle is measured, not guessed.** The camera sits at z 4.9, so a
 *bigger* z is *nearer* the lens — and the first version of this ran to z 3.6, a
 metre and a third from a 74° lens. Measured across it, his head projected to
@@ -474,6 +485,12 @@ satisfy three things at every corner — floor clear of the counters (by raycast
 since the merged-by-material GLB makes bounding boxes useless), whole in frame on
 a portrait phone, and whole in frame on a landscape desktop, which is the one
 that caps the near edge. He stays 2.9–4.0 m from the lens.
+
+Every bound is **his shoulders, not his centre**. The first version sampled the
+floor with a single ray under his origin, which walked him to the edge of the
+clear floor with an arm through a cabinet — and put his shoulder in the stove at
+the far edge. Sampling four points around him at his 0.3 m radius is what set the
+final bounds.
 
 `maxFacingAwayDeg` stops him choosing a spot that would turn his back on the
 camera, since he is meant to be someone you talk to. The walkable rectangle is in
@@ -600,6 +617,36 @@ The tuning panel has a **Talking** folder: type a line into *say to him* and
 press *send*. It takes exactly the path a spoken sentence does, minus the
 recogniser, and asks for no permissions at all. From the console,
 `talk.say('...')`, `talk.voice.stop()` and `talk.brain.forget()`.
+
+## Lighting experiment: real lights instead of the bake
+
+`src/roomLights.ts`, off by default, in the panel under *Lighting experiment →
+real lights (bake off)*. It sets every lightmap to zero and lights the room with
+four lights instead: a warm hemisphere, a directional sun, a point light at the
+pendant's actual bulb (there is a real `Bulb_Glow` emissive in the GLB at
+-1.55, 2.25, 2.55), and a soft fill standing in for the fourth wall that is not
+modelled. Nothing is destructive — the lightmaps stay attached and are only
+turned down, so the toggle is instant both ways.
+
+**The bake wins on looks and always will.** It is path-traced GI with hours of
+Blender behind it, against four lights and a shadow map. What it cannot do is
+*change*: the lightmaps are a photograph of one lighting state, so a light
+switch, a time of day, or a lamp Colin turns on each need another bake. That is
+the trade this makes visible.
+
+The first attempt came out cooler and harder than the baked room, for the
+obvious reason — four lights have no bounce, and the bake is nothing but bounce.
+The fix was to stop asking the lights to supply it: **the HDR probe was shot
+inside this kitchen**, so it already carries the warm walls, the colour bleeding
+off the wood, and the soft wrap. Turned most of the way up (`envMapIntensity`
+1.7, against the bake's 0.25) it stands in for the GI and the lights only do
+direction and the bulb, which is the part they are good at. Ambient down at 0.2,
+sun at 1.6.
+
+Sun shadows are a switch of their own, since they are the expensive part —
+enabling them turns on the renderer's shadow map and marks all 82 room meshes as
+casters and receivers, and the flag is dropped again when the experiment is off
+so the character pass never pays for it.
 
 ## Interactive objects
 
