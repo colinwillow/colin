@@ -10,6 +10,7 @@ import { createWander, DEFAULT_WANDER } from './wander';
 import { graftHead, DEFAULT_HEAD_FIT, type GraftedHead } from './head';
 import { loadCharacter, createCharacterLights, type Character, type CharacterLights } from './character';
 import { pickQuality, QUALITY } from './quality';
+import { createConversation, type Conversation } from './talk';
 
 /** On the rug in front of the stove, where the HDR probe was rendered. */
 export const CHARACTER_SPOT = new THREE.Vector3(-0.3, 0, 1.7);
@@ -38,6 +39,19 @@ function setForegroundVisible(room: THREE.Object3D, visible: boolean) {
  * path has to go through this or it 404s once deployed under a subpath.
  */
 const ASSETS = import.meta.env.BASE_URL;
+
+/**
+ * The Cloudflare Worker that holds the keys: Claude on `POST /`, the ElevenLabs
+ * voice clone on `POST /speak`. Nothing secret ever reaches the page.
+ *
+ * Its CORS allow-list is `https://colinwillow.github.io`, which is where this is
+ * deployed — so talking works on the live site and not on a dev server, unless
+ * the Worker's ALLOWED_ORIGIN is widened or `?brain=` points somewhere else.
+ */
+const BRAIN = new URLSearchParams(location.search).get('brain')
+  ?? 'https://orb-brain.colinwillowtree.workers.dev';
+/** Which character the Worker answers and speaks as — see CASTS in the Worker. */
+const PERSONA = 'colin';
 
 const loading = document.getElementById('loading')!;
 const label = document.getElementById('label')!;
@@ -151,6 +165,18 @@ try {
   });
   rig.setTarget(colin.root);
 
+  // Talking needs the face, so it only exists if the graft landed. Everything it
+  // touches — the microphone, the AudioContext, the network — waits for a tap on
+  // the button; nothing here asks for a permission on load.
+  let talk: Conversation | null = null;
+  if (head) {
+    talk = createConversation({ endpoint: BRAIN, persona: PERSONA, head, colin, wander, camera });
+  } else {
+    // Without the face there is nothing to lip-sync, so the button would only be
+    // a promise the page cannot keep.
+    document.getElementById('talk')?.remove();
+  }
+
   const resize = () => {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, settings.maxPixelRatio));
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -181,6 +207,9 @@ try {
     const dt = Math.min(clock.getDelta(), 0.1);
     wander.update(dt);
     colin.update(dt);
+    // After the mixer: the visemes write morph influences, and a clip that
+    // animated the face would otherwise stomp them on the way past.
+    talk?.update(dt);
     rig.update(dt);
     renderer.clear();
 
@@ -193,11 +222,11 @@ try {
     renderer.render(characterScene, camera);   // Colin, lit by his own rig
   });
 
-  buildTuningPanel(kitchen.manifest.exposure, lightmapped, colin, lights, look, roomExposure, kitchen, resize, wander, rig, head);
+  buildTuningPanel(kitchen.manifest.exposure, lightmapped, colin, lights, look, roomExposure, kitchen, resize, wander, rig, head, talk);
 
   // Debug handles. From the devtools console: kitchen.interactive.Fridge_Door,
   // kitchen.lightmapped[0].lightMapIntensity, new THREE.Raycaster(), ...
-  Object.assign(window, { kitchen, colin, wander, rig, head, THREE });
+  Object.assign(window, { renderer, kitchen, colin, wander, rig, head, talk, THREE });
 
   loading.classList.add('done');
   document.body.classList.add('ready');
@@ -247,6 +276,7 @@ function buildTuningPanel(
   wander: ReturnType<typeof createWander>,
   rig: ReturnType<typeof createCameraRig>,
   head: GraftedHead | null,
+  talk: Conversation | null,
 ) {
   const state = {
     exposure,
@@ -272,7 +302,7 @@ function buildTuningPanel(
 
   const roam = gui.addFolder('Wandering');
   const w = wander.config;
-  roam.add(w, 'enabled').name('walk around');
+  roam.add(w, 'enabled').name('walk around').listen();   // the conversation switches this off while he answers
   roam.add(w, 'speed', 0.2, 1.6, 0.01).name('walk speed m/s');
   roam.add(w, 'turnSpeed', 30, 360, 5).name('turn °/s');
   roam.add(w, 'pauseMin', 0, 20, 0.5).name('pause min s');
@@ -316,6 +346,20 @@ function buildTuningPanel(
         .onChange((v: number) => { head.clearMorphs(); head.setMorph(demo.viseme, v); });
     }
     face.open();
+  }
+
+  if (talk) {
+    // Typing at him is the same path a spoken sentence takes — heard, answered,
+    // spoken, lip-synced — with the recogniser cut out. It is how any of this
+    // gets tested on a machine where talking out loud is awkward, and it needs
+    // no microphone permission at all.
+    const chat = gui.addFolder('Talking');
+    const line = { text: '', send: () => { if (line.text.trim()) talk.say(line.text.trim()); } };
+    chat.add(line, 'text').name('say to him');
+    chat.add(line, 'send').name('send');
+    chat.add(talk.voice, 'volume', 0, 4, 0.05).name('voice volume');
+    chat.add({ hush: () => talk.voice.stop() }, 'hush').name('stop talking');
+    chat.add({ forget: () => talk.brain.forget() }, 'forget').name('forget the conversation');
   }
 
   const shot = gui.addFolder('Camera');

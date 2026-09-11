@@ -33,6 +33,13 @@ index.html                      loading overlay + canvas
 src/main.ts                     renderer, resize, render loop, tuning panel
 src/kitchenEnvironment.ts       loads the GLB, wires up lightmaps and the HDR probe
 src/character.ts                loads Colin, fits him to height, contact shadow
+src/wander.ts                   walks him around the room on his own
+src/head.ts                     grafts the blendshape head onto the body's head joint
+src/talk.ts                     the conversation: ears -> brain -> voice -> mouth
+src/listen.ts                   the browser's speech recognition, and when to deafen it
+src/brain.ts                    the Worker chat call, streamed
+src/voice.ts                    the ElevenLabs clone: chunking, scheduling, the audio graph
+src/visemes.ts                  text and character timings -> mouth shapes -> morph targets
 public/kitchen/                 the baked assets, served verbatim
   kitchen_room_02.glb           the room: 82 meshes, Draco + WebP
   kitchen_lightmaps.json        manifest: atlases, mesh->atlas map, exposure, interactive names
@@ -45,6 +52,7 @@ public/character/
   colin_slim.glb                the rigged character, from colinwillow/glorp
   colin_diffuse_2k.webp         his skin, overriding the one inside the GLB
 scripts/screenshot.mjs          optional headless render check (see below)
+scripts/talk-check.mjs          exercises the talking pipeline with the Worker stubbed
 ```
 
 About 14 MB of assets. Every file is well under GitHub's limits, so Git LFS is
@@ -462,6 +470,111 @@ he is — that is what the talking code will call.
 seconds, so nothing visibly moves. Step it by hand instead —
 `wander.update(1/60); colin.update(1/60); rig.update(1/60)` in a loop.
 
+## Talking to him
+
+Tap **talk** at the bottom of the screen. That one gesture does two things,
+because it is the only one we are guaranteed: it wakes the `AudioContext`
+(iOS will not start one without a gesture, and suspends it again whenever the
+page loses focus) and it starts speech recognition.
+
+Four pieces that know nothing about each other, and `src/talk.ts` is the only
+place their order matters:
+
+| | |
+|---|---|
+| `src/listen.ts` | the browser's own `SpeechRecognition`. No key, no proxy. |
+| `src/brain.ts` | `POST /` to the Worker, streamed, so he can start talking before the sentence is finished. |
+| `src/voice.ts` | `POST /speak` to the Worker: his ElevenLabs voice clone. |
+| `src/visemes.ts` | the character timings that come back with the audio, turned into mouth shapes. |
+
+Both endpoints are the same Cloudflare Worker, `orb-brain.colinwillowtree.workers.dev`,
+carried over from glorp. The Anthropic and ElevenLabs keys live there as
+Cloudflare secrets and never reach the page. Its CORS allow-list is
+`https://colinwillow.github.io`, which is where this deploys — **so talking works
+on the live site and not on a dev server**, unless you widen `ALLOWED_ORIGIN` or
+point `?brain=` at something else. `persona: "colin"` is what selects his
+personality and his cloned voice inside the Worker.
+
+### The order is the design
+
+1. **Deafen him the moment a sentence lands**, not when the audio starts. The
+   round trip to the model is a second or two with the microphone open, and
+   everything it picks up in that window belongs to a question already asked.
+   `abort()` rather than `stop()`, because stop finalises what is pending —
+   which is exactly his own voice coming back through the speaker.
+2. **Stop him walking.** `wander.config.enabled = false` plus `wander.halt()`,
+   and he turns to face the camera at 90°/s — attention, not a manoeuvre.
+3. **Speak, then hand the microphone back** after an 850 ms echo tail.
+
+Recognition's own `isFinal` waits for the room to go quiet, and a room with a
+fridge in it never does, so the end of a sentence is decided here instead: the
+transcript has stopped changing for `gapMs` (620 ms).
+
+### Why the mouth is timed from the text
+
+Driving a mouth off the live waveform is the obvious approach and the weaker
+one: a level meter knows how loud he is, not what he is saying, so you get a jaw
+flapping in time with the syllables and forming none of them.
+
+ElevenLabs returns a start and an end time for **every character it spoke**
+alongside the audio (`marks: 1`, about a third more bytes). That is the real
+thing: silent letters get a near-zero span, and letters sharing one sound get
+spans that abut, so "ough" collapses into one hold instead of four flickers. The
+level is then used for one job only — closing the mouth in the gaps, since a
+written sentence has no silences in it.
+
+The shapes are the Preston Blair ten (`AI E O U WQ L FV MBP etc rest`), which is
+why there is an `etc` (every consonant the mouth barely changes for) and a
+`rest`. **A viseme is never worth deleting**: dropping anything under the minimum
+hold killed the "I" in "Hello, I am" — one character, 40 ms — and the face went
+dead on exactly the words a face should be most alive on. Rests are the
+compressible thing, so short rests are absorbed and short visemes borrow time
+from a rest beside them. Total length is untouched, so the audio stays in sync.
+
+`colin_head.glb` ships Character Creator's own visemes — shapes that *are* the
+vowels — so the rig maps straight onto them. Two things are measured rather than
+assumed:
+
+- **The jaw is a shape, not a bone.** The armature in the file is a few joints
+  baked in so the graft has landmarks, and the jaw among them carries no skin
+  weight. The file has both `Jaw_Open` and a custom `jaw_open`; the custom one
+  moves twice as far, and it is picked by reach.
+- **A weight in the rig is not a distance.** `MBP` is `V_Explosive` at 1.00 plus
+  `Mouth_Close` at 0.60, and those numbers were chosen on a different face. On
+  this one `Mouth_Close` is among the largest shapes on the mesh, so the same
+  0.60 hauls the bottom lip over the top one. The mouth is measured at load and
+  any overshoot comes out of the single shape doing the most lifting — not all
+  of them, or the press that makes an M an M goes too.
+
+Any shape that is commanded is reached fast and only the drift back to neutral is
+lazy: closing your lips is a movement, not a relaxation, and easing both ways
+left the jaw degrees open through an M.
+
+### Checking it without the network
+
+`scripts/talk-check.mjs` runs the whole pipeline in headless Chromium with the
+Worker stubbed — a streamed reply and a tone with a plausible character
+alignment — so no key, no microphone and no network are involved. What it
+actually tests is the part that is ours: the chat body, the audio scheduling,
+the timeline, and whether the mouth on the real head moves.
+
+```bash
+npm i -D playwright && npx playwright install chromium   # not a project dependency
+npm run build && npx vite preview --port 4173 &
+npm run talk-check -- http://127.0.0.1:4173/
+```
+
+It stops the render loop before it samples: software WebGL draws about one frame
+every two seconds and blocks the main thread doing it, which starves the sampler
+and would prove nothing either way.
+
+### Testing it without a microphone
+
+The tuning panel has a **Talking** folder: type a line into *say to him* and
+press *send*. It takes exactly the path a spoken sentence does, minus the
+recogniser, and asks for no permissions at all. From the console,
+`talk.say('...')`, `talk.voice.stop()` and `talk.brain.forget()`.
+
 ## Interactive objects
 
 These are separate meshes, and each pivot is placed where the object naturally
@@ -560,10 +673,10 @@ npm run screenshot -- http://127.0.0.1:4173/ shot.png 1500x1000
 3. **Light switch.** Colin can bake a second lightmap set with the lights off.
    Crossfade between the two sets in a shader, or by swapping textures while
    fading intensity, and dim the pendant bulb's emissive at the same time.
-4. **The face, voice and visemes.** Bring over the talking-character setup from
-   glorp: `colin_head.glb` (92 morph targets) grafted at the head joint, the
-   Cloudflare Worker in `worker/` (Claude brain + ElevenLabs voice clone,
-   `persona-colin.md`), and the viseme rig. API tokens will need reconnecting.
+4. ~~**The face, voice and visemes.**~~ Done — see *Talking to him* above. The
+   Worker still lives in `colinwillow/glorp` under `worker/`; nothing about it
+   had to change, since the kitchen deploys to the same origin its CORS
+   allow-list already names.
 
 ## Source files (Colin's machine)
 

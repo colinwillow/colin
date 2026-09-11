@@ -45,6 +45,34 @@
         max-width: 44ch; color: #e0836f; text-transform: none; letter-spacing: 0;
         font-family: ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap;
       }
+      /* --- talking to him --- */
+      #talk {
+        position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
+        display: grid; justify-items: center; gap: 10px;
+        /* Clear of the home indicator and of the iOS toolbar. */
+        padding: 0 18px calc(18px + env(safe-area-inset-bottom));
+        font: 500 13px/1.45 ui-sans-serif, system-ui, -apple-system, sans-serif;
+        opacity: 0; transition: opacity 0.5s ease 0.4s; pointer-events: none;
+      }
+      body.ready #talk { opacity: 1; }
+      #say {
+        max-width: 34ch; text-align: center; color: #efe6db;
+        text-shadow: 0 1px 12px rgba(0, 0, 0, 0.85), 0 0 3px rgba(0, 0, 0, 0.9);
+        min-height: 1.45em;
+      }
+      #say b { font-weight: 500; color: #c8a06a; }
+      #mic {
+        pointer-events: auto; -webkit-appearance: none; appearance: none;
+        border: 1px solid #3a322b; border-radius: 999px; padding: 11px 22px;
+        background: rgba(16, 14, 12, 0.72); backdrop-filter: blur(6px);
+        color: #cbbfb1; font: inherit; letter-spacing: 0.1em; text-transform: uppercase;
+        cursor: pointer; transition: color 0.2s ease, border-color 0.2s ease;
+      }
+      #mic:disabled { opacity: 0.4; cursor: default; }
+      #mic.on { color: #0b0a09; background: #c8a06a; border-color: #c8a06a; }
+      /* Thinking or talking: still armed, but not listening to you this second.
+         Declared after .on so it wins on a button that is both. */
+      #mic.busy { color: #c8a06a; background: rgba(16, 14, 12, 0.72); border-color: #6b5533; }
       /* lil-gui sits top-right; keep it out of the way until the room is up */
       .lil-gui.root { --width: 260px; opacity: 0; transition: opacity 0.5s ease 0.4s; }
       body.ready .lil-gui.root { opacity: 1; }
@@ -55,6 +83,10 @@
       <div id="label">Loading kitchen</div>
       <div id="bar"><i></i></div>
       <div id="error"></div>
+    </div>
+    <div id="talk">
+      <div id="say"></div>
+      <button id="mic" type="button" disabled>talk</button>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
