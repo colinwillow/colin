@@ -492,6 +492,52 @@ clear floor with an arm through a cabinet — and put his shoulder in the stove 
 the far edge. Sampling four points around him at his 0.3 m radius is what set the
 final bounds.
 
+### Turning
+
+He has `idle_turn_left` and `idle_turn_right` and nothing was using them: any
+change of heading played `walk_fwd_normal` while the root spun, so a 180 was him
+moonwalking round on the spot.
+
+They cannot simply be played, because **they bake their rotation into the hips
+rather than the root** — 102.6° over 0.97 s, measured off the GLB. Played
+straight, the clip turns him *and* the root turns him, twice over, and then it
+all snaps back when the clip loops. So `applyRootMotion` moves it across: each
+frame it reads the twist the clip put on the hips, adds it to the root, and
+cancels it on the bone. Same picture, except now he has actually turned and
+keeps it. It must run *after* the mixer, which is why it is a separate call in
+the render loop rather than part of `update`.
+
+Details that turned out to matter:
+
+- **Only the twist about world up moves.** The rest of what the hips do — the
+  lean into the pivot — is the animation and stays on the bone. And up is found
+  by mapping world up *into* the hips' parent frame rather than assuming local
+  Y: this armature hangs under a node rotated -90° about X, so local Y there is
+  not up.
+- **The clip's own curve drives it** — 0, 15, 40, 84, 103° across the clip,
+  which is a foot planting and a body swinging round it. Rotating the root at
+  some constant rate of our own would slide his feet for the whole turn.
+- **Magnitude from the clip, direction from the target.** The clip picked is
+  already the right-handed one, so they agree — but taking direction from the
+  target means a clip with an unexpected sign still turns him toward where he is
+  going rather than away from it forever.
+- **One clip's worth, never a loop.** The loop is a seam: the pose at the end of
+  a pivot is not the pose at the start of one, so the lean jumps ~10° in a single
+  frame. Smoothing that over was tried and was a wash, so instead he pivots up to
+  95° and the walking phase steers out whatever is left — which is what a person
+  does anyway. Nobody spins 180 on the spot and then sets off.
+- **The hips are handed back gradually.** Stop cancelling the instant the turn
+  ends and the clip is still fading out at high weight: 76° snapped onto him in
+  one frame, measured. `halt()` does the same, since being interrupted to talk
+  lands mid-pivot.
+
+Under 40° there is no step turn at all — he walks the corner, which the walking
+phase already steers for.
+
+Measured across 180°, -120° and 20° turns: each lands exactly on its heading,
+picks the correct clip, and the worst single-frame movement is 4–6°, most of
+which is ordinary cross-fade blending between the pivot and the walk.
+
 `maxFacingAwayDeg` stops him choosing a spot that would turn his back on the
 camera, since he is meant to be someone you talk to. The walkable rectangle is in
 the panel under *Wandering → walkable floor*, and `wander.halt()` stops him where

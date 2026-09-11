@@ -232,6 +232,10 @@ try {
     const dt = Math.min(clock.getDelta(), 0.1);
     wander.update(dt);
     colin.update(dt);
+    // After the mixer, which is the only place it can be: the turn clips bake
+    // their rotation into the hips, and this moves it onto the root so he keeps
+    // it when the clip loops.
+    wander.applyRootMotion();
     // After the mixer: the visemes write morph influences, and a clip that
     // animated the face would otherwise stomp them on the way past.
     talk.update(dt);
