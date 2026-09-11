@@ -18,8 +18,15 @@ export interface WanderArea {
 export interface WanderConfig {
   enabled: boolean;
   area: WanderArea;
-  /** Metres per second. Too fast and his feet skate, since nothing ties the
-   *  clip's stride to the distance covered. */
+  /**
+   * Metres per second.
+   *
+   * Nothing in the clip ties the stride to the ground — the walks are in-place
+   * cycles — so this used to be free to pick, and picking it wrong is what made
+   * him skate. It is now the input to the clip's playback rate instead: see
+   * WALK_CLIP_SPEED. Any value here is slide-free; it only decides whether he
+   * ambles or marches.
+   */
   speed: number;
   /** Degrees per second while turning on the spot. */
   turnSpeed: number;
@@ -65,10 +72,16 @@ export const DEFAULT_WANDER: WanderConfig = {
    * Re-solved after the room was re-exported with the dining set gone and the
    * stool and side table moved. The left opened up — the chairs had been in it —
    * and the right closed down, because the side table landed at about x 0.75,
-   * z 1.8. Widest clear rectangle over this depth is -2.15 to 0.50; these bounds
-   * keep a little margin inside that. */
-  area: { minX: -2.1, maxX: 0.45, minZ: 1.2, maxZ: 2.0 },
-  speed: 0.62,
+   * z 1.8. The clear span is -2.15 to 0.40 and holds all the way to z 3.4, so
+   * the floor is not what limits how near the camera he comes: FRAMING is.
+   *
+   * The near edge is 2.5 because that is what DESKTOP can hold — measured, his
+   * feet leave the bottom of a 24 mm landscape frame just past 2.6. On a phone,
+   * which now carries 25 mm and 2.6 m of dolly, he stays whole past 3.9, so
+   * there is a lot more depth available the day desktop gets the same lens and
+   * dolly pairing. Until then this is the bound both tiers can keep. */
+  area: { minX: -2.1, maxX: 0.35, minZ: 1.2, maxZ: 2.5 },
+  speed: 1.15,
   turnSpeed: 120,
   // He was standing 12-13 seconds between two-second walks, which on a phone
   // means you almost always catch him standing still and conclude he is idle.
@@ -131,6 +144,26 @@ const MAX_STEP_TURN_DEG = 95;
  *  the cross-fade into the walk, so it outlasts it. */
 const SETTLE_SECONDS = 0.35;
 
+/**
+ * How fast the walk clip is actually striding, in metres per second, at the
+ * scale Colin is fitted to on load.
+ *
+ * Measured, and measured the right way the second time. Sampling the planted
+ * foot's backward velocity relative to the root looks like the obvious estimate
+ * and reads low — 1.54 — because during double support the lower-foot test picks
+ * the swinging one and drags the average down. So instead the thing that
+ * actually matters was measured directly: sweep the playback rate, and watch how
+ * fast the planted foot slides across the FLOOR. That bottoms out at 0.65 for a
+ * body moving at 1.15 m/s, which puts the clip's real stride at 1.77.
+ *
+ * Slip at the shipped setting is 0.16 m/s against 0.69 at the authored rate —
+ * the wander had been driving him at 0.62 m/s under a cycle striding for nearly
+ * three times that, which is the whole of the skating.
+ *
+ * Stride scales with him, so this is rescaled if his height is touched.
+ */
+const WALK_CLIP_SPEED = 1.77;
+
 export function createWander(
   colin: Character,
   config: WanderConfig = { ...DEFAULT_WANDER, area: { ...DEFAULT_WANDER.area } },
@@ -152,6 +185,18 @@ export function createWander(
     if (!hips && bone.isBone && /hips/i.test(bone.name)) hips = bone;
   });
   const canStepTurn = !!(hips && turnLeft && turnRight);
+
+  /** The fit at load, so a later height change rescales the stride with him. */
+  const fitAtLoad = colin.model.scale.y || 1;
+  let appliedSpeed = Number.NaN;
+  const matchStrideToSpeed = () => {
+    if (!walk || config.speed === appliedSpeed) return;
+    appliedSpeed = config.speed;
+    const natural = WALK_CLIP_SPEED * ((colin.model.scale.y || 1) / fitAtLoad);
+    // Below 1 he ambles, above 1 he hurries; either way his feet stay put on the
+    // ground, which is the only thing this is for.
+    colin.setTimeScale(walk, natural > 1e-6 ? config.speed / natural : 1);
+  };
 
   let phase: Phase = 'idle';
   let wait = 2;
@@ -319,6 +364,7 @@ export function createWander(
 
   const update = (dt: number) => {
     lastDt = dt;
+    matchStrideToSpeed();
     if (!config.enabled) return;
 
     if (phase === 'idle') {
@@ -391,6 +437,7 @@ export function createWander(
     colin.root.position.addScaledVector(toTarget.normalize(), Math.min(config.speed * dt, distance));
   };
 
+  matchStrideToSpeed();
   colin.play(pickIdle(), 0);
   return { update, applyRootMotion, config, halt, get phase() { return phase; }, get target() { return target; } };
 }

@@ -543,6 +543,23 @@ centre him at the far left — he sat 11° off axis and only drifted back once h
 had walked out of the corner of frame.) The near edge still caps the depth, because that is his feet
 leaving the bottom of a landscape frame and no amount of panning fixes it.
 
+**The walk cycle is tied to his ground speed.** The clips are in-place, so
+nothing connects the stride to the floor — which means the speed is free to pick,
+and picking it wrong is exactly what makes a character skate. `walk_fwd_normal`
+strides for **1.77 m/s** and the wander had been driving him at 0.62, nearly
+three times too slow. The clip's playback rate is now `speed / 1.77`, so any
+speed is slide-free and the number only decides whether he ambles or marches;
+shipped at 1.15 m/s, which plays the cycle at 0.65×.
+
+Worth writing down how that 1.77 was arrived at, because the obvious method is
+wrong. Sampling the planted foot's backward velocity relative to the root reads
+**1.54** — during double support the "lower foot" test picks the swinging one and
+drags the average down. Measuring the thing that actually matters instead —
+sweep the playback rate, watch how fast the planted foot slides across the
+*floor* — bottoms out at 0.65 for a body moving at 1.15 m/s, which puts the real
+stride at 1.77. Slip at the shipped setting is 0.16 m/s against 0.65 at the
+authored rate.
+
 **The rectangle is measured, not guessed.** The camera sits at z 4.9, so a
 *bigger* z is *nearer* the lens — and the first version of this ran to z 3.6, a
 metre and a third from a 74° lens. Measured across it, his head projected to
@@ -553,7 +570,16 @@ once the walk targets got far enough apart to reach the corners. The bounds now
 satisfy three things at every corner — floor clear of the counters (by raycast,
 since the merged-by-material GLB makes bounding boxes useless), whole in frame on
 a portrait phone, and whole in frame on a landscape desktop, which is the one
-that caps the near edge. He stays 2.9–4.0 m from the lens.
+that caps the near edge.
+
+**How near the camera he comes is a framing limit, not a floor one.** The clear
+span (-2.15 to 0.40) holds all the way to z 3.4; what stops him is his feet
+leaving the bottom of the frame. Measured, that is just past z 2.6 on a 24 mm
+landscape desktop and past 3.9 on a phone, which now carries 25 mm and 2.6 m of
+dolly. The near edge is 2.5 — the bound both tiers can keep — which is most of
+the depth he had before again. **Give desktop the same lens and dolly pairing and
+there is another metre and a half available**; until somebody has looked at
+desktop, taking it would mean cropping his feet off there.
 
 Every bound is **his shoulders, not his centre**. The first version sampled the
 floor with a single ray under his origin, which walked him to the edge of the

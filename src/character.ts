@@ -23,6 +23,12 @@ export interface Character {
   clips: string[];
   /** Cross-fade to a clip by name. Unknown names are ignored. */
   play: (name: string, fadeSeconds?: number) => void;
+  /**
+   * Play a clip faster or slower than authored. This is how a walk cycle gets
+   * tied to the speed the body is actually travelling: the clips are in-place,
+   * so nothing else connects the stride to the ground.
+   */
+  setTimeScale: (name: string, scale: number) => void;
   update: (deltaSeconds: number) => void;
   /** What he actually measured before being fitted, in metres. */
   measuredHeight: number;
@@ -198,12 +204,17 @@ export async function loadCharacter(
     current = next;
   };
 
+  const setTimeScale = (name: string, scale: number) => {
+    const action = actions.get(name);
+    if (action) action.timeScale = scale;
+  };
+
   const clips = gltf.animations.map((c) => c.name);
   const first = clips.find((n) => n === idle) ?? clips.find((n) => n.startsWith('idle')) ?? clips[0];
   if (first) play(first, 0);
 
   return {
-    root, model, mixer, clips, play, measuredHeight, materials,
+    root, model, mixer, clips, play, setTimeScale, measuredHeight, materials,
     setShadowStrength: shadow.setStrength,
     setHeight: fitTo,
     update: (dt) => mixer.update(dt),
