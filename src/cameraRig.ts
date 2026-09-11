@@ -28,8 +28,19 @@ export interface RigConfig {
   swayDeg: number;
 }
 
+/* Enough pan to keep him centred anywhere on the walkable floor, and very
+   nearly all of the angle taken.
+ *
+ * Measured from the camera at z 4.9, the corners of the walk area sit between
+ * -28.7° and +19.2°. At the old cap of 18° and 0.8 gain the far left asked for
+ * 23° and got 18, so he sat a good 11° off axis and only ever drifted back when
+ * he walked out of the corner of frame. 30° covers the worst corner outright.
+ *
+ * The lag does the rest: he is centred, but the camera arrives a beat after he
+ * does rather than being welded to him, which is the difference between an
+ * operator following someone and a turret tracking them. */
 export const DEFAULT_RIG: RigConfig =
-  { followDeg: 18, followGain: 0.8, followLag: 1.1, swayDeg: 2.5 };
+  { followDeg: 30, followGain: 0.95, followLag: 0.9, swayDeg: 2.5 };
 
 export interface CameraRig {
   update: (dt: number) => void;
@@ -104,9 +115,12 @@ export function createCameraRig(
     // take this much of the way toward him, and never more than this far off the
     // baked framing.
     const yaw = THREE.MathUtils.clamp(follow.x * config.followGain, -f, f);
-    // Pitch stays a fraction of the yaw budget: the room is wide and short, and
-    // a camera that tilts as much as it pans looks seasick.
-    const pitch = THREE.MathUtils.clamp(follow.y * config.followGain, -f * 0.25, f * 0.25);
+    /* Pitch stays a small fraction of the yaw budget: the room is wide and
+       short, so there is nothing above or below worth tilting for, and a camera
+       that tilts as much as it pans looks seasick. The fraction came down when
+       the yaw budget went up — a quarter of 30° is a 7.5° nod, which is far more
+       vertical movement than a man walking across a flat floor justifies. */
+    const pitch = THREE.MathUtils.clamp(follow.y * config.followGain, -f * 0.15, f * 0.15);
     /* The yaw is NEGATED, and that was the bug. A camera looks down -Z, so a
        positive rotation about Y swings its forward vector toward -X — it turns
        LEFT. He walks right, `follow.x` goes positive, and the camera turned away

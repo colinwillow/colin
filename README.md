@@ -464,6 +464,16 @@ across its length — so they are in-place cycles and the position is ours to
 drive. Nothing ties the clip's stride to the distance covered, so `speed` is a
 number picked by eye; too high and his feet skate.
 
+**The camera keeps him centred, with a beat of lag.** It pans up to 30° and
+takes 95% of the angle to him, which covers the worst corner of the walk area
+outright — measured, the corners sit between -28.7° and +19.2° from the baked
+framing. Standing still he lands within 0.06 of dead centre anywhere on the
+floor; walking at his 0.62 m/s he leads the frame by about 0.38 and the camera
+catches up when he stops. That lag is the point: an operator following someone,
+not a turret welded to them. Pitch gets a much smaller share of the budget
+(15%), since the room is wide and short and a camera that tilts as much as it
+pans looks seasick.
+
 **How wide he can roam is a camera question, not a floor question.** The floor
 was never the limit — it runs clear from x -2.25 to +1.0 — but anything outside
 the frame may as well not exist, and at the old 2.6° of follow the shot barely
@@ -471,7 +481,9 @@ moved, so he was stuck in a rug-width corridor where the Blender framing already
 pointed. The rig now pans up to 18° and takes 80% of the angle to him, which
 gives him 2.6 m instead of 1.7 m and, as a bonus, shows off a side of the room
 the fixed shot never revealed: the window over the sink, the pendant, the left
-counter run. The near edge still caps the depth, because that is his feet
+counter run. (An earlier pass capped the pan at 18°, which was not enough to
+centre him at the far left — he sat 11° off axis and only drifted back once he
+had walked out of the corner of frame.) The near edge still caps the depth, because that is his feet
 leaving the bottom of a landscape frame and no amount of panning fixes it.
 
 **The rectangle is measured, not guessed.** The camera sits at z 4.9, so a
