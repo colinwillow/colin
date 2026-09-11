@@ -198,6 +198,24 @@ The Colin folder in the tuning panel switches clip, turns him, and adjusts his
 brightness and shadow. From the console he is `window.colin` —
 `colin.play('idle_waving')`, `colin.clips`, `colin.root.position`.
 
+### Where his numbers come from
+
+The shipped values were dialled in on the live panel against the room, not
+derived, so treat them as one setting rather than nine independent ones —
+emission and his exposure in particular are a pair, since emission sets his level
+and the exposure sets where that level lands on the curve.
+
+| | |
+|---|---|
+| height | 2.1 m (larger than life, for presence at the back of a wide room) |
+| contact shadow | 1 |
+| HDR probe (`envMapIntensity`) | 1.1 |
+| key / fill / rim | 0.3 / 0.6 / 0.5 |
+| roughness | 0.75 |
+| self-illumination (`emissiveIntensity`) | 0.59 |
+| albedo lift | 1 |
+| tone curve / his exposure | ACESFilmic, 0.58 |
+
 ### Why he looks dark, and how he is lit
 
 He renders far darker than the same model does in a standalone viewer, for two
@@ -435,7 +453,39 @@ its own. Desktop keeps 24 mm.
 
 The panel's **Camera** folder carries these, plus **lens (mm)** as a
 35mm-equivalent focal length — the bake is 24 mm, longer crops in from the same
-spot, wider brings the room back.
+spot, wider brings the room back — and **camera back (m)**, which dollies the
+camera straight down its own view axis.
+
+### Lens and dolly are one decision
+
+A longer lens is a narrower field of view: it crops in, and the room goes with
+it, so on its own it buys compression at the cost of the set. Backing the camera
+off returns the field of view while **keeping** the compression. That is the
+whole difference between a portrait lens and a zoom — at 16 mm from three metres
+his nose is nearer the lens than his ears by a visible fraction of the distance,
+and at 25 mm from six it is not.
+
+To hold him the same size on screen, roughly:
+
+```
+dolly ≈ distance × (newLens / oldLens − 1)
+```
+
+He stands about 3.2 m from the baked camera, so 16 → 25 mm wants about 1.8 m
+back to break even, and anything past that trades his size for more room.
+
+**Phones now ship 25 mm with 2.6 m back** (`lensMm` and `dollyM` in
+`src/quality.ts`, paired per tier). The extra 0.8 m past break-even is
+deliberate: it buys the whole rug and both counter runs. At 16 mm the near edge
+of the room stretched hard into the corners and his head went with it.
+
+**Desktop is deliberately untouched** — no `lensMm`, no `dollyM`, so it keeps the
+shot exactly as Blender framed it at 24 mm. The pairing above was judged on a
+phone; desktop is landscape and wants its own look, which nobody has looked at
+yet.
+
+Nothing behind the camera in the GLB, incidentally — raycast 40 m back and it
+hits nothing — so the dolly has no wall to clip through.
 
 The near dining set used to be hidden at runtime, which left the shade of
 furniture that was no longer there baked into the floor — a hard rectangular

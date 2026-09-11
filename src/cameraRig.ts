@@ -26,6 +26,23 @@ export interface RigConfig {
   followLag: number;
   /** Degrees of mouse-follow sway. Desktop only — see the note on touch below. */
   swayDeg: number;
+  /**
+   * Metres to pull the camera straight back along its own view axis.
+   *
+   * The lens and this are the two halves of one decision. A longer lens is a
+   * narrower field of view — it crops in, and the room goes with it — so on its
+   * own it buys compression at the cost of the set. Backing the camera off
+   * returns the field of view while KEEPING the compression, which is the whole
+   * difference between a portrait lens and a zoom: at 16 mm from three metres
+   * his nose is nearer the lens than his ears by a visible fraction of the
+   * distance, and at 50 mm from nine it is not.
+   *
+   * Rough pairing, if you want him to stay the same size on screen:
+   *   dolly ≈ distance × (newLens / oldLens − 1)
+   * He stands about 3.2 m from the baked camera, so 16 → 35 mm wants about
+   * 3.8 m back, and 16 → 50 mm about 6.8 m.
+   */
+  dollyM: number;
 }
 
 /* Enough pan to keep him centred anywhere on the walkable floor, and very
@@ -40,7 +57,7 @@ export interface RigConfig {
  * does rather than being welded to him, which is the difference between an
  * operator following someone and a turret tracking them. */
 export const DEFAULT_RIG: RigConfig =
-  { followDeg: 30, followGain: 0.95, followLag: 0.9, swayDeg: 2.5 };
+  { followDeg: 30, followGain: 0.95, followLag: 0.9, swayDeg: 2.5, dollyM: 0 };
 
 export interface CameraRig {
   update: (dt: number) => void;
@@ -54,7 +71,13 @@ export function createCameraRig(
   { mouse = true, config = { ...DEFAULT_RIG } }: { mouse?: boolean; config?: RigConfig } = {},
 ): CameraRig {
   const base = camera.quaternion.clone();
+  /** Where the Blender camera actually stands. The dolly is measured from here,
+   *  so it stays absolute rather than accumulating every time it is nudged. */
+  const origin = camera.position.clone();
   const basePosition = camera.position.clone();
+  /** The camera looks down -Z, so its own +Z is straight backwards. */
+  const backward = new THREE.Vector3(0, 0, 1).applyQuaternion(base).normalize();
+  let appliedDolly = Number.NaN;
 
   let target: THREE.Object3D | null = null;
   const swayTarget = new THREE.Vector2();
@@ -81,6 +104,13 @@ export function createCameraRig(
   const inverseBase = base.clone().invert();
 
   const update = (dt: number) => {
+    // Cheap to check, and it means the panel can just mutate the config.
+    if (config.dollyM !== appliedDolly) {
+      appliedDolly = config.dollyM;
+      basePosition.copy(origin).addScaledVector(backward, appliedDolly);
+      camera.position.copy(basePosition);
+    }
+
     if (target) {
       // Where he is relative to the camera's resting orientation, so "left of
       // frame" is left however the shot was framed.

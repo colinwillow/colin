@@ -64,6 +64,14 @@ export interface QualitySettings {
    * framed in Blender.
    */
   lensMm?: number;
+  /**
+   * Metres to pull the camera straight back, paired with `lensMm`.
+   *
+   * The two only make sense together: a longer lens crops in and takes the room
+   * with it, and backing off returns the room while keeping the compression.
+   * Undefined leaves the camera where Blender put it.
+   */
+  dollyM?: number;
   /** Which character GLB to load. */
   characterGlb: string;
   /**
@@ -103,7 +111,12 @@ export const QUALITY: Record<Quality, QualitySettings> = {
     maxPixelRatio: 1.5,
     maxAnisotropy: 4,
     sway: 'touch',
-    lensMm: 16,
+    // 25 mm and 2.6 m back rather than 16 mm at the bake's own spot. At 16 the
+    // near edge of the room stretched hard into the corners and his head with
+    // it; this is flatter, and pulling back past the 1.8 m that would have held
+    // him the same size buys the rest of the floor and the whole rug.
+    lensMm: 25,
+    dollyM: 2.6,
     characterGlb: 'colin_stylized_01_ktx2.glb',
     // Three 2K face textures are 64 MB of GPU as RGBA8 against 8 MB as ETC1S —
     // more than the room and the body together were saving.
@@ -114,7 +127,12 @@ export const QUALITY: Record<Quality, QualitySettings> = {
     maxPixelRatio: 1.5,
     maxAnisotropy: 4,
     sway: 'touch',
-    lensMm: 16,
+    // 25 mm and 2.6 m back rather than 16 mm at the bake's own spot. At 16 the
+    // near edge of the room stretched hard into the corners and his head with
+    // it; this is flatter, and pulling back past the 1.8 m that would have held
+    // him the same size buys the rest of the floor and the whole rug.
+    lensMm: 25,
+    dollyM: 2.6,
     characterGlb: 'colin_stylized_01.glb',
     characterSkin: 'Mat_diffuse_lighter.webp',
     headGlb: 'colin_head.glb',

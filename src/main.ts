@@ -84,18 +84,18 @@ try {
     // lightmaps recover their true level by multiplying by encodeScale (8); the
     // probe gets no such compensation, so he needs it here or he sits well below
     // the room he is standing in.
-    envMapIntensity: 1,
+    envMapIntensity: 1.1,
     // Desktop overrides the GLB's darker skin with the lighter repaint. The
     // mobile GLB has it baked in already, so it overrides nothing.
     baseColorMap: settings.characterSkin && `${ASSETS}character/${settings.characterSkin}`,
-    // Colin's Blender setup for this room: the diffuse fed back as 50% emission,
-    // roughness 0.8. Backed off from 0.65 — he was reading a shade hot, and
-    // emission is the knob that does it: it adds light the tone curve then
-    // compresses, so the top of his range flattens and the colour goes with it.
-    // Taking it out brings the level down and lets the lit shading carry more of
-    // him. Panel: Colin — lighting -> self-illumination.
-    emissiveIntensity: 0.52,
-    roughness: 0.8,
+    // Colin's own numbers, dialled in on the live panel against the room rather
+    // than derived: the diffuse fed back as emission at 0.59, roughness 0.75.
+    // Emission is the knob that sets his level — it adds light the tone curve
+    // then compresses, so the top of his range flattens and the colour goes with
+    // it — and it is paired with his exposure below, which came down to 0.58 at
+    // the same time. Panel: Colin — lighting.
+    emissiveIntensity: 0.59,
+    roughness: 0.75,
   });
   colin.root.position.copy(CHARACTER_SPOT);
 
@@ -168,7 +168,13 @@ try {
   const wander = createWander(colin, { ...DEFAULT_WANDER, area: { ...DEFAULT_WANDER.area } });
   const rig = createCameraRig(camera, {
     mouse: settings.sway === 'mouse',
-    config: { ...DEFAULT_RIG, swayDeg: settings.sway === 'mouse' ? DEFAULT_RIG.swayDeg : 0 },
+    config: {
+      ...DEFAULT_RIG,
+      swayDeg: settings.sway === 'mouse' ? DEFAULT_RIG.swayDeg : 0,
+      // Paired with the tier's lens — see quality.ts. Desktop sets neither and
+      // keeps the shot exactly as Blender framed it.
+      dollyM: settings.dollyM ?? DEFAULT_RIG.dollyM,
+    },
   });
   rig.setTarget(colin.root);
 
@@ -201,7 +207,7 @@ try {
   // needs a little more exposure than the room to sit at the same level.
   const look = {
     toneMapping: THREE.ACESFilmicToneMapping as THREE.ToneMapping,
-    exposure: 0.75,
+    exposure: 0.58,
   };
 
   const clock = new THREE.Clock();
@@ -403,6 +409,12 @@ function buildTuningPanel(
   // lens to 117 degrees vertical — a 7 mm fisheye.
   shot.add(framing, 'maxFov', 40, 120, 1).name('max vertical FOV °')
     .onChange((v: number) => { kitchen.framing.maxFov = v; resize(); });
+  /* The other half of the lens. Longer glass crops in and takes the room with
+     it; backing the camera off puts the room back and keeps the compression,
+     which is the difference between a portrait lens and a zoom. Roughly, to
+     hold him the same size on screen: dolly = 3.2 × (newLens / 16 − 1). So
+     35 mm wants about 3.8 m, 50 mm about 6.8 m. */
+  shot.add(rig.config, 'dollyM', 0, 10, 0.1).name('camera back (m)');
 
   shot.open();
   gui.add(state, 'logSettings').name('log settings to console');
