@@ -17,25 +17,6 @@ import { createConversation, type Conversation } from './talk';
 export const CHARACTER_SPOT = new THREE.Vector3(-0.3, 0, 1.7);
 
 /**
- * The near dining set. Hidden by default: on a phone it filled the lower third
- * of the frame and none of it does anything yet.
- *
- * Their shadows and bounce are baked into the lightmaps and stay on the floor
- * after they go, so this reads as furniture removed from a photo rather than
- * furniture that was never there. Making it permanent means a re-bake;
- * `ENV_Wood_Table` is deliberately not in the list, since despite the name it is
- * back-wall furniture rather than the near table.
- */
-const FOREGROUND = ['ENV_Wood_TableTop', 'Chair_Far', 'Chair_Right', 'Chair_NearLeft', 'Mug_Table'];
-
-function setForegroundVisible(room: THREE.Object3D, visible: boolean) {
-  for (const name of FOREGROUND) {
-    const obj = room.getObjectByName(name);
-    if (obj) obj.visible = visible;
-  }
-}
-
-/**
  * Where the assets live. '/' in dev, '/<repo>/' on GitHub Pages — every asset
  * path has to go through this or it 404s once deployed under a subpath.
  */
@@ -140,7 +121,6 @@ try {
   scene.add(roomLights.group);
 
   if (settings.lensMm !== undefined) kitchen.framing.referenceFov = fovForLens(settings.lensMm);
-  setForegroundVisible(kitchen.room, false);
 
   /**
    * The grafted face — OFF while the visemes are being sculpted onto the
@@ -412,7 +392,6 @@ function buildTuningPanel(
     mode: kitchen.framing.mode as FramingMode,
     lens: Math.round(lensForFov(kitchen.framing.referenceFov)),
     maxFov: kitchen.framing.maxFov,
-    hideForeground: true,
   };
   shot.add(framing, 'mode', ['lens', 'cover'] as FramingMode[]).name('framing')
     .onChange((v: FramingMode) => { kitchen.framing.mode = v; resize(); });
@@ -425,8 +404,6 @@ function buildTuningPanel(
   shot.add(framing, 'maxFov', 40, 120, 1).name('max vertical FOV °')
     .onChange((v: number) => { kitchen.framing.maxFov = v; resize(); });
 
-  shot.add(framing, 'hideForeground').name('hide table & chairs')
-    .onChange((v: boolean) => setForegroundVisible(kitchen.room, !v));
   shot.open();
   gui.add(state, 'logSettings').name('log settings to console');
 

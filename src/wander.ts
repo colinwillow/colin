@@ -57,13 +57,17 @@ export const DEFAULT_WANDER: WanderConfig = {
    * caps the depth, since that is a matter of his feet leaving the bottom of a
    * landscape frame and no amount of panning fixes it.
    *
-   * Every bound is his SHOULDERS, not his centre. The clear floor runs to -2.25
-   * and +1.0 here, but he is about 0.6 m across, so walking his origin to the
-   * edge of the clear floor puts an arm through a cabinet — and the far edge is
-   * 1.2 rather than 1.0 for the same reason, checked by sampling the floor at
-   * four points around him instead of one underneath him: at 1.0 he had his
-   * shoulder in the stove. */
-  area: { minX: -1.95, maxX: 0.65, minZ: 1.2, maxZ: 2.0 },
+   * Every bound is his SHOULDERS, not his centre: the floor is sampled at nine
+   * points around a 0.3 m radius rather than once under his origin, which is
+   * what stops him walking an arm through a cabinet, and what keeps the far edge
+   * off the stove at z 1.2.
+   *
+   * Re-solved after the room was re-exported with the dining set gone and the
+   * stool and side table moved. The left opened up — the chairs had been in it —
+   * and the right closed down, because the side table landed at about x 0.75,
+   * z 1.8. Widest clear rectangle over this depth is -2.15 to 0.50; these bounds
+   * keep a little margin inside that. */
+  area: { minX: -2.1, maxX: 0.45, minZ: 1.2, maxZ: 2.0 },
   speed: 0.62,
   turnSpeed: 120,
   // He was standing 12-13 seconds between two-second walks, which on a phone

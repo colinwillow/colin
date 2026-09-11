@@ -339,6 +339,16 @@ Three, chosen by `src/quality.ts` at startup and overridable with
 | `mobile` | 14.4 MB | ~382 + 21 MB | comparison only |
 | **`mobile-ktx2`** | **26.4 MB** | **~117 MB total** | phones and iPads |
 
+> **After any re-bake, rebuild the KTX2 set — `bash scripts/make-mobile-ktx2.sh`
+> — and re-sync its manifest.** `mobile-ktx2` is a *derived* tier: its GLB is
+> transcoded from `kitchen_room_mobile.glb`, its lightmaps from
+> `lightmaps_mobile/`, and `kitchen_lightmaps_mobile_ktx2.json` is its own file.
+> Drop new assets in without that step and desktop shows the new room while
+> **every phone silently keeps the old one** — which is exactly what happened
+> the first time: the chairs were gone on desktop and still standing on a phone.
+> The manifest is the mobile one with three fields put back: `atlases` pointing
+> at `lightmaps_mobile_ktx2/*.ktx2`, `glb`, and `cameraFallback`.
+
 Colin is in the KTX2 pass too — `colin_stylized_01_ktx2.glb`, with the lighter
 skin baked in rather than overridden at runtime, which also spares a phone
 decoding the original 2K atlas just to throw it away. His skin as ETC1S costs
@@ -425,16 +435,13 @@ its own. Desktop keeps 24 mm.
 
 The panel's **Camera** folder carries these, plus **lens (mm)** as a
 35mm-equivalent focal length — the bake is 24 mm, longer crops in from the same
-spot, wider brings the room back. **The near dining set is hidden by default** — `ENV_Wood_TableTop`, the three
-chairs and `Mug_Table`. It filled the lower third of a phone frame and none of it
-does anything yet. The panel's **hide table & chairs** toggle puts it back.
+spot, wider brings the room back.
 
-Their shadows and bounce are still baked into the lightmaps, so what is on the
-floor is the shade of furniture that is no longer there. It reads as furniture
-removed from a photograph rather than furniture that was never in the room, and
-it is subtle at the current framing — but making the removal permanent means a
-re-bake. `ENV_Wood_Table` is deliberately not in the set: despite the name it is
-back-wall furniture, not the near table.
+The near dining set used to be hidden at runtime, which left the shade of
+furniture that was no longer there baked into the floor — a hard rectangular
+shadow edge across the boards. That is gone: the room was re-exported without the
+chairs, table top, mug and fruit bowl, with the stool and side table moved, and
+the lightmaps re-baked to match. The runtime hiding list went with it.
 
 `addCameraSway(camera, dom, config)` returns an `update()` function to call every
 frame. It adds a small mouse-follow rotation, 2.5° by default; mutate
@@ -713,13 +720,12 @@ moves. The loader returns them as `interactive[name]`.
 
 | Name | Pivot | Future use |
 |---|---|---|
-| `Chair_Far`, `Chair_Right`, `Chair_NearLeft` | Center of the base, on the floor | Sit anchor: add an empty or bone target at seat height |
 | `Fridge_Door` | Hinge edge, right side of the fridge, bottom of the upper door | Rotate about Y to open. Test which sign swings it toward the camera |
 | `Fridge_Body` | Base center | Static counterpart to the door |
 | `Stove_OvenDoor` | Bottom front edge of the oven | Rotate about X to drop open |
 | `DutchOven_Pot`, `DutchOven_Lid` | Bottom center | Pick up / lift lid |
 | `Pendant_Lamp` | Ceiling mount | Can swing; the bulb is emissive |
-| `Mug_Table`, `FruitBowl`, `CopperSkillet`, `CopperSaucepan` | Near the bottom center | Pick up |
+| `CopperSkillet`, `CopperSaucepan` | Near the bottom center | Pick up |
 
 These objects' lightmaps were baked at their rest positions. When one moves far,
 such as a pot carried across the room, set its `lightMap` to null and raise its
