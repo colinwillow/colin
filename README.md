@@ -40,6 +40,8 @@ src/listen.ts                   the browser's speech recognition, and when to de
 src/brain.ts                    the Worker chat call, streamed
 src/voice.ts                    the ElevenLabs clone: chunking, scheduling, the audio graph
 src/visemes.ts                  text and character timings -> mouth shapes -> morph targets
+VISEMES.md                      the nine shapes to sculpt, and why
+viseme-reference.png            all ten mouth positions, rendered
 public/kitchen/                 the baked assets, served verbatim
   kitchen_room_02.glb           the room: 82 meshes, Draco + WebP
   kitchen_lightmaps.json        manifest: atlases, mesh->atlas map, exposure, interactive names
@@ -461,6 +463,18 @@ across its length — so they are in-place cycles and the position is ours to
 drive. Nothing ties the clip's stride to the distance covered, so `speed` is a
 number picked by eye; too high and his feet skate.
 
+**The rectangle is measured, not guessed.** The camera sits at z 4.9, so a
+*bigger* z is *nearer* the lens — and the first version of this ran to z 3.6, a
+metre and a third from a 74° lens. Measured across it, his head projected to
+ndcX 1.6 at the near corners: off the side of the screen, feet off the bottom,
+and the wide-angle stretch in the corner blowing his head up to something
+grotesque. Past z 3.05 there was no x at all where he fitted. It only showed up
+once the walk targets got far enough apart to reach the corners. The bounds now
+satisfy three things at every corner — floor clear of the counters (by raycast,
+since the merged-by-material GLB makes bounding boxes useless), whole in frame on
+a portrait phone, and whole in frame on a landscape desktop, which is the one
+that caps the near edge. He stays 2.9–4.0 m from the lens.
+
 `maxFacingAwayDeg` stops him choosing a spot that would turn his back on the
 camera, since he is meant to be someone you talk to. The walkable rectangle is in
 the panel under *Wandering → walkable floor*, and `wander.halt()` stops him where
@@ -471,6 +485,12 @@ seconds, so nothing visibly moves. Step it by hand instead —
 `wander.update(1/60); colin.update(1/60); rig.update(1/60)` in a loop.
 
 ## Talking to him
+
+> **The face is off right now.** `USE_HEAD_GRAFT = false` in `src/main.ts`: he is
+> back to his own full-body head while the visemes are sculpted onto that mesh
+> directly — see **VISEMES.md** and `viseme-reference.png`. He still talks, his
+> mouth just does not move yet. `src/visemes.ts` already knows how to drive the
+> sculpted set, so bringing it back is the shapes arriving, not new code.
 
 Tap **talk** at the bottom of the screen. That one gesture does two things,
 because it is the only one we are guaranteed: it wakes the `AudioContext`
@@ -531,7 +551,13 @@ dead on exactly the words a face should be most alive on. Rests are the
 compressible thing, so short rests are absorbed and short visemes borrow time
 from a rest beside them. Total length is untouched, so the audio stays in sync.
 
-`colin_head.glb` ships Character Creator's own visemes — shapes that *are* the
+Three rigs are matched against whatever the mesh has, best fit first. A
+**sculpted nine** (`viseme_MBP`, `viseme_AI`, …) wins outright when it is there:
+the shape *is* the mouth position at weight 1, so nothing is reconstructed,
+calibrated or mixed, and the separate jaw channel switches off because the shape
+carries its own jaw. That is the set in VISEMES.md and where this is heading.
+
+Failing that, `colin_head.glb` ships Character Creator's own visemes — shapes that *are* the
 vowels — so the rig maps straight onto them. Two things are measured rather than
 assumed:
 

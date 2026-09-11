@@ -28,7 +28,9 @@ export interface TalkOptions {
   endpoint: string;
   /** Which character the Worker should answer and speak as. */
   persona?: string;
-  head: GraftedHead;
+  /** The mesh carrying the viseme shapes. Without one he still talks; his mouth
+   *  just does not move, which is the state while the shapes are being sculpted. */
+  head: GraftedHead | null;
   colin: Character;
   wander: Wander;
   camera: THREE.Camera;
@@ -43,7 +45,7 @@ export interface Conversation {
   brain: Brain;
   voice: Voice;
   ears: Ears;
-  face: Face;
+  face: Face | null;
 }
 
 /** How fast he turns to face you once you have said something, in degrees per
@@ -56,7 +58,7 @@ export function createConversation(opts: TalkOptions): Conversation {
   const brain = createBrain(endpoint, persona);
   const voice = createVoice(endpoint, persona);
   const ears = createEars();
-  const face = createFace(head);
+  const face = head ? createFace(head) : null;
 
   const say = document.getElementById('say');
   const mic = document.getElementById('mic') as HTMLButtonElement | null;
@@ -151,7 +153,7 @@ export function createConversation(opts: TalkOptions): Conversation {
 
   const update = (dt: number) => {
     voice.update();
-    face.update(dt, voice.shape());
+    face?.update(dt, voice.shape());
     if (!engaged) return;
     // Turn to whoever is talking to him. The camera is the only stand-in for a
     // person we have.

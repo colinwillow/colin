@@ -84,9 +84,16 @@ export function createCameraRig(
 
     const f = THREE.MathUtils.degToRad(config.followDeg);
     const s = THREE.MathUtils.degToRad(config.swayDeg);
+    /* The yaw is NEGATED, and that was the bug. A camera looks down -Z, so a
+       positive rotation about Y swings its forward vector toward -X — it turns
+       LEFT. He walks right, `follow.x` goes positive, and the camera turned away
+       from him: every step he took toward the edge of frame, the shot pushed him
+       further out, which is why he kept disappearing.
+       Pitch is not negated, because a positive rotation about X does tilt the
+       view up, which is the way you want it when he is high in frame. */
     euler.set(
       follow.y * f * 0.6 - sway.y * s * 0.5,
-      follow.x * f - sway.x * s,
+      -follow.x * f - sway.x * s,
       0,
       'YXZ',
     );

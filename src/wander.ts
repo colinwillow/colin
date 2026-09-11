@@ -33,9 +33,23 @@ export interface WanderConfig {
 
 export const DEFAULT_WANDER: WanderConfig = {
   enabled: true,
-  // The open strip of floor: clear of the counters on both walls, the stove
-  // behind him and the doorway. Roughly where the runner rug is.
-  area: { minX: -1.15, maxX: 0.55, minZ: 1.25, maxZ: 3.6 },
+  /* The open floor he can cross AND still be seen on.
+   *
+   * The camera is at z 4.9, so a BIGGER z is nearer the lens, and the old
+   * rectangle ran to 3.6 — a metre and a third from a 74° lens. Measured across
+   * that rectangle, his head projected to ndcX 1.6 at the near corners: fully off
+   * the side of the screen, with his feet off the bottom, and the wide-angle
+   * stretch in the corner blowing his head up to something grotesque. Past z 3.05
+   * there was no x at all where he fitted in frame. It only started showing up
+   * once the walk targets got far enough apart to actually reach the corners.
+   *
+   * These bounds are measured rather than guessed: the floor is clear of the
+   * counters and the stove across all of it (raycast, since the GLB is merged by
+   * material and bounding boxes span the room), and at every corner he is whole
+   * in frame on both a portrait phone and a landscape desktop — the desktop is
+   * what caps the near edge, since his feet leave the bottom there first. He now
+   * stays between 2.9 m and 4.0 m from the lens. */
+  area: { minX: -1.2, maxX: 0.5, minZ: 1.0, maxZ: 2.0 },
   speed: 0.62,
   turnSpeed: 120,
   // He was standing 12-13 seconds between two-second walks, which on a phone

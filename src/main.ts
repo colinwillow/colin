@@ -107,8 +107,12 @@ try {
     // mobile GLB has it baked in already, so it overrides nothing.
     baseColorMap: settings.characterSkin && `${ASSETS}character/${settings.characterSkin}`,
     // Colin's Blender setup for this room: the diffuse fed back as 50% emission,
-    // roughness 0.8.
-    emissiveIntensity: 0.65,
+    // roughness 0.8. Backed off from 0.65 — he was reading a shade hot, and
+    // emission is the knob that does it: it adds light the tone curve then
+    // compresses, so the top of his range flattens and the colour goes with it.
+    // Taking it out brings the level down and lets the lit shading carry more of
+    // him. Panel: Colin — lighting -> self-illumination.
+    emissiveIntensity: 0.52,
     roughness: 0.8,
   });
   colin.root.position.copy(CHARACTER_SPOT);
@@ -131,11 +135,26 @@ try {
   if (settings.lensMm !== undefined) kitchen.framing.referenceFov = fovForLens(settings.lensMm);
   setForegroundVisible(kitchen.room, false);
 
-  // The face with the visemes is a separate file on a different rig, so it gets
-  // hung off his head bone and the body's own head is discarded in the shader.
-  label.textContent = 'Loading his face';
+  /**
+   * The grafted face — OFF while the visemes are being sculpted onto the
+   * full-body mesh itself.
+   *
+   * It was always the hacky way round: a second head on a different rig, hung
+   * off the head joint, with the body's own head thrown away in the shader. It
+   * worked, but it is two meshes where one will do, it costs a second set of
+   * face textures, and the grafted head is not the head Colin modelled. Once the
+   * body carries its own `viseme_*` shapes none of that is needed — see
+   * VISEMES.md for the set, and `src/visemes.ts` already knows how to drive them.
+   *
+   * Everything below stays wired up, so this is one flag either way. With it
+   * off, `cutBodyHead` never runs and his own head is simply left alone.
+   */
+  const USE_HEAD_GRAFT = false;
+
+  label.textContent = USE_HEAD_GRAFT ? 'Loading his face' : 'Nearly there';
   let head: GraftedHead | null = null;
   try {
+    if (!USE_HEAD_GRAFT) throw new Error('head graft disabled');
     head = await graftHead(colin, `${ASSETS}character/${settings.headGlb}`, {
       renderer,
       envMap: kitchen.envMap,
@@ -152,7 +171,8 @@ try {
       `scale ${head.measuredScale.toFixed(3)}`);
   } catch (err) {
     // Not fatal: without it he is the body's own head and cannot lip-sync.
-    console.warn('head graft failed, keeping the body head:', err);
+    if (USE_HEAD_GRAFT) console.warn('head graft failed, keeping the body head:', err);
+    else console.log('head graft off — his own head, no visemes yet');
   }
 
   // He walks the open strip of floor on his own; the camera drifts after him.
@@ -168,14 +188,12 @@ try {
   // Talking needs the face, so it only exists if the graft landed. Everything it
   // touches — the microphone, the AudioContext, the network — waits for a tap on
   // the button; nothing here asks for a permission on load.
-  let talk: Conversation | null = null;
-  if (head) {
-    talk = createConversation({ endpoint: BRAIN, persona: PERSONA, head, colin, wander, camera });
-  } else {
-    // Without the face there is nothing to lip-sync, so the button would only be
-    // a promise the page cannot keep.
-    document.getElementById('talk')?.remove();
-  }
+  // He talks with or without a face: silent lips are a worse conversation, not an
+  // impossible one, and there is no reason to take the voice away while the
+  // shapes are being sculpted.
+  const talk: Conversation = createConversation(
+    { endpoint: BRAIN, persona: PERSONA, head, colin, wander, camera },
+  );
 
   const resize = () => {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, settings.maxPixelRatio));
@@ -209,7 +227,7 @@ try {
     colin.update(dt);
     // After the mixer: the visemes write morph influences, and a clip that
     // animated the face would otherwise stomp them on the way past.
-    talk?.update(dt);
+    talk.update(dt);
     rig.update(dt);
     renderer.clear();
 
@@ -276,7 +294,7 @@ function buildTuningPanel(
   wander: ReturnType<typeof createWander>,
   rig: ReturnType<typeof createCameraRig>,
   head: GraftedHead | null,
-  talk: Conversation | null,
+  talk: Conversation,
 ) {
   const state = {
     exposure,
@@ -348,7 +366,7 @@ function buildTuningPanel(
     face.open();
   }
 
-  if (talk) {
+  {
     // Typing at him is the same path a spoken sentence takes — heard, answered,
     // spoken, lip-synced — with the recogniser cut out. It is how any of this
     // gets tested on a machine where talking out loud is awkward, and it needs

@@ -204,6 +204,14 @@ export async function graftHead(
   const bodyHead = findBone(character.model, /(^|[_:])Head$/i);
   if (!bodyHead) throw new Error('No head bone on the body to graft onto');
 
+  // The mesh whose skeleton this bone belongs to. Its inverse bind matrices are
+  // the only record of the pose the body's own head geometry was authored in.
+  let skinOwner: THREE.SkinnedMesh | null = null;
+  character.model.traverse((o) => {
+    const mesh = o as THREE.SkinnedMesh;
+    if (!skinOwner && mesh.isSkinnedMesh && mesh.skeleton?.bones.includes(bodyHead as THREE.Bone)) skinOwner = mesh;
+  });
+
   // Weights first: the fit is measured from them, and the cut needs them anyway.
   cutBodyHead(character, fit.cut);
 
@@ -283,11 +291,38 @@ export async function graftHead(
 
     const wantHeight = (targetBox.max.y - targetBox.min.y) * fit.scale;
 
-    // The head bone carries the Mixamo rig's own rest rotation, which the
-    // Character Creator head knows nothing about — inherited, it tips his head
-    // down and to one side. Cancelling the bone's rest orientation leaves the
-    // head upright while still following the bone when it animates.
-    const rest = bodyHead.getWorldQuaternion(new THREE.Quaternion()).invert();
+    /* The head bone carries the Mixamo rig's own rest rotation, which the
+       Character Creator head knows nothing about — inherited, it tips his head
+       back and to one side. Cancelling it leaves the head upright while still
+       following the bone when it animates.
+     *
+     * WHICH rotation is cancelled is the whole thing. Taking the bone's world
+     * quaternion here cancels its pose *at load*, on whichever idle clip
+     * happened to be playing — and `pickIdle` picks at random, so the residual
+     * differed from load to load and came back the moment any other clip played.
+     * Measured on a phone, the graft was inheriting 19.4° of pitch: chin up,
+     * eyes on the ceiling.
+     *
+     * The bind pose is the fixed reference. It is what the body's own head
+     * geometry was modelled against — that head looks level while this bone
+     * sits 20° back, because the 20° is already in the vertices. So cancel the
+     * bone's BIND orientation and the graft sits exactly where the head it
+     * replaced sat: level with the body, and free to follow the animation on
+     * top. `boneInverses` is that pose, relative to `bindMatrix`, and it is a
+     * property of the rig rather than of the clock. */
+    let rest: THREE.Quaternion | null = null;
+    const owner = skinOwner as THREE.SkinnedMesh | null;
+    const boneIndex = owner ? owner.skeleton.bones.indexOf(bodyHead as THREE.Bone) : -1;
+    if (owner && boneIndex >= 0) {
+      const bindWorld = new THREE.Matrix4().copy(owner.skeleton.boneInverses[boneIndex]).invert();
+      const bindLocal = new THREE.Matrix4().copy(owner.bindMatrix).invert().multiply(bindWorld);
+      // decompose, not setFromRotationMatrix: the armature's 0.01 scale is in
+      // there and would shear the quaternion.
+      const q = new THREE.Quaternion();
+      bindLocal.decompose(new THREE.Vector3(), q, new THREE.Vector3());
+      rest = q.invert();
+    }
+    if (!rest) rest = bodyHead.getWorldQuaternion(new THREE.Quaternion()).invert();
     anchor.quaternion.copy(rest).multiply(
       new THREE.Quaternion().setFromEuler(new THREE.Euler(
         THREE.MathUtils.degToRad(fit.pitchDeg), THREE.MathUtils.degToRad(fit.yawDeg), 0, 'YXZ')),

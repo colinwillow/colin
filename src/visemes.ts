@@ -178,6 +178,30 @@ const RIG_CC: Rig = {
 };
 
 /**
+ * Nine shapes sculpted one per mouth position — the set in VISEMES.md, and the
+ * one to prefer when a mesh has it.
+ *
+ * The other two rigs reconstruct a mouth position out of parts: ARKit builds a
+ * vowel from a jaw angle plus a pucker plus two stretches, and even Character
+ * Creator needs weights per shape that have to be measured against the mesh
+ * before they are safe. A purpose-sculpted set needs none of that — the shape IS
+ * the position, at weight 1, with nothing to calibrate and nothing to overshoot.
+ */
+const RIG_SCULPTED: Rig = {
+  rest: {},
+  MBP: { viseme_MBP: 1 },
+  FV: { viseme_FV: 1 },
+  E: { viseme_E: 1 },
+  AI: { viseme_AI: 1 },
+  O: { viseme_O: 1 },
+  U: { viseme_U: 1 },
+  // WQ is close enough to U that it is not worth a tenth shape to sculpt.
+  WQ: { viseme_WQ: 1 },
+  L: { viseme_L: 1 },
+  etc: { viseme_etc: 1 },
+};
+
+/**
  * Apple's 52, for any head that ships those instead. A vowel has to be
  * reconstructed out of a jaw angle plus a pucker plus two stretches, so it is
  * the worse fit — but a driver written against these names works on MetaHuman,
@@ -223,7 +247,7 @@ export interface Face {
   /** Ease the mouth towards `shape`. Call once per frame. */
   update: (dt: number, shape: Shape) => void;
   /** Which rig was matched, for the console. */
-  rig: 'Character Creator' | 'ARKit';
+  rig: 'sculpted nine' | 'Character Creator' | 'ARKit';
   jawShape: string | null;
 }
 
@@ -336,8 +360,14 @@ export function createFace(head: GraftedHead): Face {
     for (const w of want) if (have.some((h) => h === w || h.includes(w))) hit++;
     return hit / want.size;
   };
-  let rig = score(RIG_CC) >= score(RIG_ARKIT) ? RIG_CC : RIG_ARKIT;
-  const which = rig === RIG_CC ? 'Character Creator' : 'ARKit';
+  /* Best fit wins, sculpted first: a mesh that has the purpose-built nine is
+     saying exactly what each mouth position should look like, and no amount of
+     reconstructing one out of ARKit parts beats being told. */
+  const sculpted = score(RIG_SCULPTED);
+  let rig = sculpted >= 0.85 ? RIG_SCULPTED
+    : score(RIG_CC) >= score(RIG_ARKIT) ? RIG_CC : RIG_ARKIT;
+  const which = rig === RIG_SCULPTED ? 'sculpted nine'
+    : rig === RIG_CC ? 'Character Creator' : 'ARKit';
 
   const wanted = new Set<string>();
   for (const sh of Object.keys(rig) as Shape[]) for (const k in rig[sh]) wanted.add(k);
@@ -365,10 +395,12 @@ export function createFace(head: GraftedHead): Face {
     bound.push({ mesh, map, jaw: findJaw(mesh) });
   }
 
-  // Calibrated once, on whichever primitive carries the most mouth.
+  // Calibrated once, on whichever primitive carries the most mouth — and only
+  // where the weights were somebody's guess. A sculpted shape at weight 1 is the
+  // artist's own statement of the pose; there is nothing to correct.
   const widest = bound.reduce<Bound | null>((best, b) =>
     (!best || Object.keys(b.map).length > Object.keys(best.map).length ? b : best), null);
-  if (widest) rig = calibrateLips(widest.mesh, widest.map, rig);
+  if (widest && rig !== RIG_SCULPTED) rig = calibrateLips(widest.mesh, widest.map, rig);
 
   const jawName = (() => {
     const b = bound.find((x) => x.jaw != null);
@@ -400,7 +432,9 @@ export function createFace(head: GraftedHead): Face {
         inf[i] += ((target[name] ?? 0) - inf[i]) * k;
       }
     }
-    jawNow += ((JAW[shape] ?? 0) - jawNow) * k;
+    // A sculpted shape already contains its own jaw opening, so the separate
+    // jaw channel would open it twice.
+    jawNow += ((rig === RIG_SCULPTED ? 0 : JAW[shape] ?? 0) - jawNow) * k;
     // Written last, straight onto the influence: whatever set the mouth shape
     // does not know the jaw is a separate channel, and the jaw has to survive it.
     for (const b of bound) {
@@ -413,7 +447,7 @@ export function createFace(head: GraftedHead): Face {
        two words is a mouth at ease and not a mouth clamped shut, and measuring
        against zero meant the face never finished arriving and the driver held
        onto it forever. */
-    let biggest = Math.abs(jawNow - JAW.rest);
+    let biggest = Math.abs(jawNow - (rig === RIG_SCULPTED ? 0 : JAW.rest));
     for (const b of bound) {
       const inf = b.mesh.morphTargetInfluences!;
       for (const name in b.map) biggest = Math.max(biggest, Math.abs(inf[b.map[name]] - (rig.rest[name] ?? 0)));
@@ -423,9 +457,9 @@ export function createFace(head: GraftedHead): Face {
     for (const b of bound) {
       const inf = b.mesh.morphTargetInfluences!;
       for (const name in b.map) inf[b.map[name]] = rig.rest[name] ?? 0;
-      if (b.jaw != null) inf[b.jaw] = JAW.rest;
+      if (b.jaw != null) inf[b.jaw] = rig === RIG_SCULPTED ? 0 : JAW.rest;
     }
-    jawNow = JAW.rest;
+    jawNow = rig === RIG_SCULPTED ? 0 : JAW.rest;
     settled = true;
   };
 
