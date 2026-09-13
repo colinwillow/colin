@@ -250,9 +250,16 @@ export function createWander(
     base: THREE.Quaternion | null;
     /** The turn is over but its clip is still fading out. See applyRootMotion. */
     settling: number;
+    /** The twist as it stood the moment the turn finished, and the clip that
+     *  put it there — both frozen, because what has to be undone from here is
+     *  the TURN's contribution and not whatever the hips are doing now. */
+    settleTwist: THREE.Quaternion | null;
+    settleClip: string;
     /** Where his heading was when the turn started, so the step lands exactly
      *  where the clip said and not on a guess. */
     startYaw: number;
+    /** Which turn clip is playing. */
+    clip: string;
   } | null = null;
 
   /* Never the same idle twice running. With only a couple in the file that is
@@ -332,10 +339,14 @@ export function createWander(
       return;
     }
     if (canStepTurn && clip) {
+      // play() resets an action's time but not its rate, and the last turn left
+      // this one frozen — see the completion below.
+      colin.setTimeScale(clip, 1);
       step = {
         sign: Math.sign(change),
         total: Math.min(Math.abs(change), THREE.MathUtils.degToRad(MAX_STEP_TURN_DEG)),
         done: 0, last: 0, elapsed: 0, base: null, settling: 0,
+        settleTwist: null, settleClip: '', clip,
         startYaw: colin.root.rotation.y,
       };
       colin.play(clip, 0.2);
@@ -361,7 +372,12 @@ export function createWander(
     // what happens when somebody talks to him — the turn clip is still fading
     // out, and letting go of the hips right then pops whatever is left of it
     // onto him. Hand them back the same way a finished turn does.
-    if (step) { step.settling = Math.max(step.settling, SETTLE_SECONDS); step.total = step.done; }
+    if (step) {
+      step.settling = Math.max(step.settling, SETTLE_SECONDS);
+      step.total = step.done;
+      step.settleTwist ??= _twist.clone();
+      step.settleClip ||= step.clip;
+    }
     wait = rand(config.pauseMin, config.pauseMax);
     colin.play(pickIdle());
   };
@@ -435,16 +451,32 @@ export function createWander(
        round. Stop cancelling the moment the turn ends and every degree left in
        that fade snaps back onto him — measured at 76 degrees in one frame on a
        180. So keep cancelling, and transfer nothing, until the fade is done. */
-    if (step.settling > 0) {
+    if (step.settling > 0 && step.settleTwist) {
       step.settling -= lastDt;
-      /* Released gradually, not dropped. Cancelling in full right up to the last
-         frame and then stopping pops whatever the walk's own hip swing happens
-         to be at that instant — 25 degrees, measured. Easing the cancellation
-         out hands the hips back to the animation without a seam. */
-      const k = Math.max(0, Math.min(1, step.settling / SETTLE_SECONDS));
-      _cancel.identity().slerp(_tmp.copy(_twist).invert(), k);
+      /* THE CLIP'S OWN WEIGHT DECIDES THIS, not a timer.
+       *
+       * The turn is over and the root has all of it, but the clip is still
+       * inside its cross-fade and still posing the hips in proportion to how
+       * much of it is left. Two earlier attempts both twitched, for opposite
+       * reasons: cancelling in full and then stopping dead pops whatever the
+       * WALK's hip swing happens to be at that instant (25°, measured), and
+       * easing the cancellation out on a timer re-exposes the TURN's residual
+       * faster than the fade removes it — measured, he over-rotated 13° and
+       * swung back 18° right at the seam, which is the twitch.
+       *
+       * A cross-fade poses the hips at roughly the turn's twist times its
+       * weight, so cancelling exactly that tracks the fade instead of racing
+       * it: full at weight 1, nothing at weight 0, continuous at both ends.
+       * And it is the FROZEN twist, so the walk's own hip motion is left alone
+       * rather than being cancelled along with it. */
+      const k = Math.max(0, Math.min(1, colin.weightOf(step.settleClip)));
+      _cancel.identity().slerp(_tmp.copy(step.settleTwist).invert(), k);
       bone.quaternion.premultiply(_cancel);
-      if (step.settling <= 0) step = null;
+      // The timer is only a backstop, for a fade that never finishes.
+      if (k < 0.02 || step.settling <= 0) {
+        colin.setTimeScale(step.settleClip, 1);
+        step = null;
+      }
       return;
     }
 
@@ -455,6 +487,16 @@ export function createWander(
       // is only part of the way round and the walk steers out the rest.
       colin.root.rotation.y = step.startYaw + step.sign * step.total;
       step.settling = SETTLE_SECONDS;
+      step.settleTwist = _twist.clone();
+      step.settleClip = step.clip;
+      /* FREEZE THE CLIP, or the correction below is aiming at a moving target.
+         A turn clip is 0.97s long and delivers 122°; a 95° step reaches its cap
+         at about 0.95s — a hair before the clip loops. So through the fade-out
+         its twist would snap from 122° back to zero while the correction was
+         still undoing 95°, which is a 48° lurch, measured. Stopping its clock
+         holds the pose it finished on, and the pose is then exactly what the
+         weight below says it is. */
+      colin.setTimeScale(step.clip, 0);
       afterTurn();
     } else {
       step.done += use;

@@ -28,6 +28,15 @@ export interface Character {
    * so nothing else connects the stride to the ground.
    */
   setTimeScale: (name: string, scale: number) => void;
+  /**
+   * How much a clip is contributing right now, 0–1. During a cross-fade the
+   * outgoing clip is still posing the skeleton in proportion to this, which is
+   * what anything correcting for a clip has to track.
+   *
+   * Only meaningful for a clip that has been played: three leaves an untouched
+   * action's weight at 1, so this cannot be used to ask "is that one playing".
+   */
+  weightOf: (name: string) => number;
   update: (deltaSeconds: number) => void;
   /** What he actually measured before being fitted, in metres. */
   measuredHeight: number;
@@ -203,6 +212,15 @@ export async function loadCharacter(
     current = next;
   };
 
+  const weightOf = (name: string) => {
+    const action = actions.get(name);
+    /* Deliberately NOT `isRunning()`, which is false for an action whose
+       timeScale is zero — and freezing a clip's clock while it fades out is
+       exactly when its weight matters most. `enabled` still goes false when the
+       mixer retires it, which is the thing worth checking. */
+    return action && action.enabled ? action.getEffectiveWeight() : 0;
+  };
+
   const setTimeScale = (name: string, scale: number) => {
     const action = actions.get(name);
     if (action) action.timeScale = scale;
@@ -213,7 +231,7 @@ export async function loadCharacter(
   if (first) play(first, 0);
 
   return {
-    root, model, mixer, clips, play, setTimeScale, measuredHeight, materials,
+    root, model, mixer, clips, play, setTimeScale, weightOf, measuredHeight, materials,
     setShadowStrength: shadow.setStrength,
     setHeight: fitTo,
     update: (dt) => mixer.update(dt),

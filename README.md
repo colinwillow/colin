@@ -568,10 +568,27 @@ Details that turned out to matter:
   frame. Smoothing that over was tried and was a wash, so instead he pivots up to
   95° and the walking phase steers out whatever is left — which is what a person
   does anyway. Nobody spins 180 on the spot and then sets off.
-- **The hips are handed back gradually.** Stop cancelling the instant the turn
-  ends and the clip is still fading out at high weight: 76° snapped onto him in
-  one frame, measured. `halt()` does the same, since being interrupted to talk
-  lands mid-pivot.
+- **The hips are handed back in proportion to the clip's own weight**, and this
+  took three goes. Stop cancelling the instant the turn ends and the clip is
+  still fading out at high weight: 76° snaps onto him in one frame. Ease the
+  cancellation out on a timer instead and it re-exposes the turn's residual
+  faster than the fade removes it — he over-rotates and swings back, measured at
+  15–18° right at the seam, which is what the twitch was.
+  A cross-fade poses the hips at roughly the turn's twist times its weight, so
+  cancelling exactly that tracks the fade rather than racing it: full at weight
+  1, nothing at weight 0, continuous at both ends.
+  Two things make that exact. The clip's **clock is stopped** at completion —
+  it is 0.97 s long and a 95° step reaches its cap at about 0.95 s, a hair
+  before it loops, so otherwise its twist snaps from 122° back to zero mid-fade
+  and the correction is aiming at a moving target (a 48° lurch, measured). And
+  the weight is read **without `isRunning()`**, which is false for an action
+  whose timeScale is zero — freezing the clock would otherwise make the
+  correction read a weight of 0 and do nothing at all.
+  `halt()` does the same, since being interrupted to talk lands mid-pivot.
+
+  Measured across 60°, ±120° and 175° turns, the worst reversal in any 0.25 s
+  window is 8–10°, during the walk and idle rather than at the seam — against a
+  control of **6.3°**, which is what a plain walk's hips do on their own.
 
 Under 40° there is no step turn at all — he walks the corner, which the walking
 phase already steers for.
