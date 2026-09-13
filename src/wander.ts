@@ -30,9 +30,19 @@ export interface WanderConfig {
   speed: number;
   /** Degrees per second while turning on the spot. */
   turnSpeed: number;
-  /** How long he stands around between walks, in seconds. */
+  /** How long he stands around between anything, in seconds. */
   pauseMin: number;
   pauseMax: number;
+  /**
+   * Chance a pause simply ends in another pause, on a different idle.
+   *
+   * Without this every pause ended in a walk, and walk-pause-walk-pause is the
+   * one rhythm a person never has. Standing still, shifting, and standing still
+   * again is most of what somebody in a kitchen actually does.
+   */
+  restChance: number;
+  /** Chance he turns on the spot and stays put, rather than walking off. */
+  turnChance: number;
   /** He never turns his back further than this from the camera, so a
    *  conversation partner stays a conversation partner. */
   maxFacingAwayDeg: number;
@@ -85,8 +95,12 @@ export const DEFAULT_WANDER: WanderConfig = {
   turnSpeed: 120,
   // He was standing 12-13 seconds between two-second walks, which on a phone
   // means you almost always catch him standing still and conclude he is idle.
-  pauseMin: 2,
-  pauseMax: 5.5,
+  // Long enough that standing is his default state rather than a gap between
+  // walks. Half of these end in nothing but a change of idle.
+  pauseMin: 4,
+  pauseMax: 11,
+  restChance: 0.5,
+  turnChance: 0.25,
   maxFacingAwayDeg: 115,
 };
 
@@ -148,36 +162,42 @@ const SETTLE_SECONDS = 0.35;
  * How fast the walk clip is actually striding, in metres per second, at the
  * scale Colin is fitted to on load.
  *
- * Measured, and measured the right way the second time. Sampling the planted
- * foot's backward velocity relative to the root looks like the obvious estimate
- * and reads low — 1.54 — because during double support the lower-foot test picks
- * the swinging one and drags the average down. So instead the thing that
- * actually matters was measured directly: sweep the playback rate, and watch how
- * fast the planted foot slides across the FLOOR. That bottoms out at 0.65 for a
- * body moving at 1.15 m/s, which puts the clip's real stride at 1.77.
+ * Measured the way that actually answers the question: sweep the playback rate
+ * and watch how fast the planted foot slides across the FLOOR. Sampling the
+ * foot's velocity relative to the root looks like the obvious estimate and reads
+ * low, because during double support the lower-foot test picks the swinging one
+ * and drags the average down.
  *
- * Slip at the shipped setting is 0.16 m/s against 0.69 at the authored rate —
- * the wander had been driving him at 0.62 m/s under a cycle striding for nearly
- * three times that, which is the whole of the skating.
+ * Re-measured for `walk_fwd_neutral` on the new single-GLB Colin: the slide
+ * bottoms out at a playback rate of 0.74 for a body moving at 1.15 m/s, so the
+ * clip strides at 1.55. (The old model's walk wanted 1.77 — a different rig and
+ * a different clip, so the number does not carry over, and re-exports are
+ * exactly when this needs re-running.)
  *
  * Stride scales with him, so this is rescaled if his height is touched.
  */
-const WALK_CLIP_SPEED = 1.77;
+const WALK_CLIP_SPEED = 1.55;
 
 export function createWander(
   colin: Character,
   config: WanderConfig = { ...DEFAULT_WANDER, area: { ...DEFAULT_WANDER.area } },
 ): Wander {
-  const idles = colin.clips.filter((c) => /^idle_(neutral|happy|stretch|look|fan)/.test(c));
-  const walk = colin.clips.find((c) => c === 'walk_fwd_normal') ?? colin.clips.find((c) => c.startsWith('walk'));
+  /* Names moved with the new export: walk_fwd_normal is walk_fwd_neutral,
+     idle_turn_* are turn_*, and there is a Neutral_Idle alongside idle_neutral.
+     Matched loosely rather than listed, so the next re-export does not silently
+     leave him standing still. Kneeling and the dances are deliberately out: one
+     is a pose he cannot stand up from and the others are not idling. */
+  const idles = colin.clips.filter((c) => /idle/i.test(c) && !/kneel|exhaust|sad/i.test(c));
+  const walk = colin.clips.find((c) => /^walk_fwd_neutral$/i.test(c))
+    ?? colin.clips.find((c) => /^walk/i.test(c));
   /* He has proper turn-in-place clips and nothing was using them: a 180° change
      of heading played walk_fwd_normal while the root span, so he moonwalked
      round on the spot. They carry their rotation baked into the HIPS — 102.6°
      over 0.97s, measured — rather than in the root, which is why they cannot
      just be played: the clip would turn him and so would the root, twice over,
      and then snap back when the clip looped. See applyRootMotion. */
-  const turnLeft = colin.clips.find((c) => c === 'idle_turn_left');
-  const turnRight = colin.clips.find((c) => c === 'idle_turn_right');
+  const turnLeft = colin.clips.find((c) => /(^|_)turn_left$/i.test(c));
+  const turnRight = colin.clips.find((c) => /(^|_)turn_right$/i.test(c));
 
   let hips: THREE.Bone | null = null;
   colin.model.traverse((o) => {
@@ -248,6 +268,44 @@ export function createWander(
   const withinFacingLimit = (yaw: number) => {
     const away = Math.abs(THREE.MathUtils.radToDeg(angleDelta(0, yaw)));
     return away <= config.maxFacingAwayDeg;
+  };
+
+  /** True when the turn now starting is the first half of going somewhere. */
+  let pendingWalk = true;
+
+  /** Start turning to `facing`, with the step clip when the change earns one. */
+  const beginTurn = (change: number) => {
+    const clip = change > 0 ? turnLeft : turnRight;
+    if (Math.abs(change) < THREE.MathUtils.degToRad(STEP_TURN_MIN_DEG)) {
+      // Too small to plant a foot for. Walk the corner, or if he was only going
+      // to turn, do not bother at all.
+      if (!pendingWalk) { wait = rand(config.pauseMin, config.pauseMax); return; }
+      phase = 'walking';
+      if (walk) colin.play(walk, 0.25);
+      return;
+    }
+    if (canStepTurn && clip) {
+      step = {
+        sign: Math.sign(change),
+        total: Math.min(Math.abs(change), THREE.MathUtils.degToRad(MAX_STEP_TURN_DEG)),
+        done: 0, last: 0, elapsed: 0, base: null, settling: 0,
+        startYaw: colin.root.rotation.y,
+      };
+      colin.play(clip, 0.2);
+    }
+    phase = 'turning';
+  };
+
+  /** Where a finished turn goes: on to the walk, or back to standing. */
+  const afterTurn = () => {
+    if (pendingWalk) {
+      phase = 'walking';
+      if (walk) colin.play(walk, 0.25);
+    } else {
+      phase = 'idle';
+      wait = rand(config.pauseMin, config.pauseMax);
+      colin.play(pickIdle(), 0.4);
+    }
   };
 
   const halt = () => {
@@ -350,8 +408,7 @@ export function createWander(
       // is only part of the way round and the walk steers out the rest.
       colin.root.rotation.y = step.startYaw + step.sign * step.total;
       step.settling = SETTLE_SECONDS;
-      phase = 'walking';
-      if (walk) colin.play(walk, 0.25);
+      afterTurn();
     } else {
       step.done += use;
       colin.root.rotation.y += step.sign * use;
@@ -370,6 +427,27 @@ export function createWander(
     if (phase === 'idle') {
       wait -= dt;
       if (wait > 0) return;
+
+      /* What he does next, and mostly it is nothing. A different idle is still
+         a change — the clips have their own weight shifts and glances in them —
+         and it costs him no ground, which is the point. */
+      const roll = Math.random();
+      if (roll < config.restChance) {
+        wait = rand(config.pauseMin, config.pauseMax);
+        colin.play(pickIdle(), 0.6);
+        return;
+      }
+      if (roll < config.restChance + config.turnChance) {
+        // Turn to look at something else and stay where he is.
+        const away = THREE.MathUtils.degToRad(rand(35, config.maxFacingAwayDeg * 0.8));
+        const yaw = angleDelta(0, colin.root.rotation.y) > 0 ? -away : away;
+        if (!withinFacingLimit(yaw)) return;
+        facing = yaw;
+        pendingWalk = false;
+        beginTurn(angleDelta(colin.root.rotation.y, yaw));
+        return;
+      }
+
       const next = chooseTarget();
       if (!next) { wait = 1; return; }
       const yaw = faceOf(next);
@@ -378,25 +456,8 @@ export function createWander(
       if (!withinFacingLimit(yaw)) return;
       target.copy(next);
       facing = yaw;
-      const change = angleDelta(colin.root.rotation.y, yaw);
-      const clip = change > 0 ? turnLeft : turnRight;
-      if (canStepTurn && clip && Math.abs(change) >= THREE.MathUtils.degToRad(STEP_TURN_MIN_DEG)) {
-        step = {
-          sign: Math.sign(change),
-          total: Math.min(Math.abs(change), THREE.MathUtils.degToRad(MAX_STEP_TURN_DEG)),
-          done: 0, last: 0, elapsed: 0, base: null, settling: 0,
-          startYaw: colin.root.rotation.y,
-        };
-        colin.play(clip, 0.2);
-        phase = 'turning';
-      } else if (Math.abs(change) >= THREE.MathUtils.degToRad(STEP_TURN_MIN_DEG)) {
-        phase = 'turning';                 // no clips: the old rotate-in-place
-      } else {
-        // Small correction. He walks the corner instead, which the walking phase
-        // already steers for.
-        phase = 'walking';
-        if (walk) colin.play(walk, 0.25);
-      }
+      pendingWalk = true;
+      beginTurn(angleDelta(colin.root.rotation.y, yaw));
       return;
     }
 
@@ -413,8 +474,7 @@ export function createWander(
       const remaining = THREE.MathUtils.degToRad(config.turnSpeed) * dt;
       if (Math.abs(turn) <= remaining) {
         colin.root.rotation.y = facing;
-        phase = 'walking';
-        if (walk) colin.play(walk, 0.25);
+        afterTurn();
       } else {
         colin.root.rotation.y += Math.sign(turn) * remaining;
         // No clip for it, so keep the feet moving rather than sliding a statue

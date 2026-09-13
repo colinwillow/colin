@@ -34,15 +34,14 @@ src/main.ts                     renderer, resize, render loop, tuning panel
 src/kitchenEnvironment.ts       loads the GLB, wires up lightmaps and the HDR probe
 src/character.ts                loads Colin, fits him to height, contact shadow
 src/wander.ts                   walks him around the room on his own
-src/head.ts                     grafts the blendshape head onto the body's head joint
+src/face.ts                     his face: the shape rig, blinks, gaze, expressions
 src/talk.ts                     the conversation: ears -> brain -> voice -> mouth
 src/listen.ts                   the browser's speech recognition, and when to deafen it
 src/brain.ts                    the Worker chat call, streamed
 src/voice.ts                    the ElevenLabs clone: chunking, scheduling, the audio graph
 src/visemes.ts                  text and character timings -> mouth shapes -> morph targets
 src/roomLights.ts               the experiment: real lights with the bake switched off
-VISEMES.md                      the nine shapes to sculpt, and why
-viseme-reference.png            all ten mouth positions, rendered
+VISEMES.md                      what the face has, and who is allowed to move it
 public/kitchen/                 the baked assets, served verbatim
   kitchen_room_02.glb           the room: 82 meshes, Draco + WebP
   kitchen_lightmaps.json        manifest: atlases, mesh->atlas map, exposure, interactive names
@@ -531,6 +530,12 @@ not a turret welded to them. Pitch gets a much smaller share of the budget
 (15%), since the room is wide and short and a camera that tilts as much as it
 pans looks seasick.
 
+**He mostly stands.** Every pause used to end in a walk, and walk-pause-walk-pause
+is the one rhythm a person never has. A pause now rolls: half the time it ends in
+nothing but a different idle, a quarter in a turn on the spot, and only the rest
+in going somewhere. Measured over three simulated minutes: **93% standing, 3%
+turning, 3% walking**.
+
 **How wide he can roam is a camera question, not a floor question.** The floor
 was never the limit — it runs clear from x -2.25 to +1.0 — but anything outside
 the frame may as well not exist, and at the old 2.6° of follow the shot barely
@@ -644,11 +649,9 @@ seconds, so nothing visibly moves. Step it by hand instead —
 
 ## Talking to him
 
-> **The face is off right now.** `USE_HEAD_GRAFT = false` in `src/main.ts`: he is
-> back to his own full-body head while the visemes are sculpted onto that mesh
-> directly — see **VISEMES.md** and `viseme-reference.png`. He still talks, his
-> mouth just does not move yet. `src/visemes.ts` already knows how to drive the
-> sculpted set, so bringing it back is the shapes arriving, not new code.
+> **The face is live.** `colin.glb` is the whole character on one skeleton, so
+> the head graft is gone entirely — see **VISEMES.md** for the shape inventory and
+> the layer order.
 
 Tap **talk** at the bottom of the screen. That one gesture does two things,
 because it is the only one we are guaranteed: it wakes the `AudioContext`

@@ -72,18 +72,16 @@ export interface QualitySettings {
    * Undefined leaves the camera where Blender put it.
    */
   dollyM?: number;
-  /** Which character GLB to load. */
-  characterGlb: string;
   /**
-   * Skin to load over whatever the GLB carries, or undefined to use its own.
-   * The KTX2 build has the lighter atlas baked in, so it overrides nothing —
-   * which also spares a phone decoding the original just to throw it away.
+   * Which character GLB to load.
+   *
+   * One file for every tier now. `colin.glb` is the whole character — body,
+   * outfit, head, eyes, teeth, one skeleton — and its textures are already
+   * authored small (two at 1080, three at 512, about 320 KB packed and 12 MB on
+   * the GPU). There is nothing for a KTX2 variant to save, so there isn't one,
+   * and no second asset tier to forget to rebuild.
    */
-  characterSkin?: string;
-  /** Which head GLB. The KTX2 one carries its face textures compressed. */
-  headGlb: string;
-  /** Face textures by material name, or undefined when the GLB carries them. */
-  headSkins?: Record<string, string>;
+  characterGlb: string;
 }
 
 export const QUALITY: Record<Quality, QualitySettings> = {
@@ -92,10 +90,7 @@ export const QUALITY: Record<Quality, QualitySettings> = {
     maxPixelRatio: 2,
     maxAnisotropy: Infinity,
     sway: 'mouse',
-    characterGlb: 'colin_stylized_01.glb',
-    characterSkin: 'Mat_diffuse_lighter.webp',
-    headGlb: 'colin_head.glb',
-    headSkins: { colin_main: 'colin_head.webp', hair: 'colin_hair.webp', eyes: 'colin_eyes.webp' },
+    characterGlb: 'colin.glb',
   },
   /**
    * What phones actually get. Same room again with every texture as KTX2 —
@@ -117,10 +112,7 @@ export const QUALITY: Record<Quality, QualitySettings> = {
     // him the same size buys the rest of the floor and the whole rug.
     lensMm: 25,
     dollyM: 2.6,
-    characterGlb: 'colin_stylized_01_ktx2.glb',
-    // Three 2K face textures are 64 MB of GPU as RGBA8 against 8 MB as ETC1S —
-    // more than the room and the body together were saving.
-    headGlb: 'colin_head_ktx2.glb',
+    characterGlb: 'colin.glb',
   },
   mobile: {
     manifest: 'kitchen_lightmaps_mobile.json',
@@ -133,9 +125,6 @@ export const QUALITY: Record<Quality, QualitySettings> = {
     // him the same size buys the rest of the floor and the whole rug.
     lensMm: 25,
     dollyM: 2.6,
-    characterGlb: 'colin_stylized_01.glb',
-    characterSkin: 'Mat_diffuse_lighter.webp',
-    headGlb: 'colin_head.glb',
-    headSkins: { colin_main: 'colin_head.webp', hair: 'colin_hair.webp', eyes: 'colin_eyes.webp' },
+    characterGlb: 'colin.glb',
   },
 };

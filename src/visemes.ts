@@ -8,8 +8,7 @@
 // end time for every character it spoke, which is the real thing — silent
 // letters get a near-zero span, and letters sharing one sound get spans that
 // abut, so "ough" collapses to one hold instead of four flickers.
-import type * as THREE from 'three';
-import type { GraftedHead } from './head';
+import { canonicalShapeName, type FaceRig } from './face';
 
 export type Shape = 'rest' | 'MBP' | 'FV' | 'E' | 'AI' | 'O' | 'U' | 'WQ' | 'L' | 'etc';
 
@@ -154,314 +153,128 @@ export function shapeAt(seq: Span[], t: number): Shape {
   return seq[lo].shape;
 }
 
+
 /* ---------------- driving a face with that timeline ---------------- */
 
 type Rig = Record<Shape, Record<string, number>>;
 
 /**
- * Reallusion's own visemes — shapes that ARE the vowels, sculpted one per mouth
- * position, which is what `colin_head.glb` carries.
+ * Character Creator's own visemes — shapes that ARE the vowels, sculpted one per
+ * mouth position, which is what `colin.glb` carries (as `V_Open_MIX` and so on;
+ * the export's `MIX` suffix is stripped when names are matched).
+ *
+ * No tongue in this export, so L is the lip shape and the jaw alone. It reads
+ * fine — the tongue only shows on a wide open L and there is not one to show.
  */
 const RIG_CC: Rig = {
   rest: {},
   // V_Explosive is the smallest-displacement shape on the mesh: it refines a
   // closure rather than making one, so Mouth_Close does the pressing.
-  MBP: { V_Explosive: 1.00, Mouth_Close: 0.60, Mouth_Press_L: 0.40, Mouth_Press_R: 0.40 },
+  MBP: { V_Explosive: 1.00, Mouth_Close: 0.55, Mouth_Press_L: 0.35, Mouth_Press_R: 0.35 },
   FV: { V_Dental_Lip: 1.00 },
   E: { V_Wide: 0.88 },
   AI: { V_Open: 0.90, V_Lip_Open: 0.35 },
-  O: { V_Tight_O: 0.92 },
-  U: { V_Tight_O: 0.55, V_Tight: 0.60 },
-  WQ: { V_Tight: 0.95 },
-  L: { V_Lip_Open: 0.50, V_Tongue_Raise: 0.70, V_Tongue_Out: 0.20 },
+  O: { V_Tight_O: 0.92, Mouth_Funnel: 0.25 },
+  U: { V_Tight_O: 0.55, V_Tight: 0.60, Mouth_Pucker: 0.25 },
+  WQ: { V_Tight: 0.95, Mouth_Pucker: 0.35 },
+  L: { V_Lip_Open: 0.60 },
   etc: { V_Affricate: 0.80 },
 };
 
-/**
- * Nine shapes sculpted one per mouth position — the set in VISEMES.md, and the
- * one to prefer when a mesh has it.
- *
- * The other two rigs reconstruct a mouth position out of parts: ARKit builds a
- * vowel from a jaw angle plus a pucker plus two stretches, and even Character
- * Creator needs weights per shape that have to be measured against the mesh
- * before they are safe. A purpose-sculpted set needs none of that — the shape IS
- * the position, at weight 1, with nothing to calibrate and nothing to overshoot.
- */
+/** Nine shapes sculpted one per mouth position — preferred when a mesh has
+ *  them, since the shape IS the position at weight 1 with nothing to mix. */
 const RIG_SCULPTED: Rig = {
   rest: {},
-  MBP: { viseme_MBP: 1 },
-  FV: { viseme_FV: 1 },
-  E: { viseme_E: 1 },
-  AI: { viseme_AI: 1 },
-  O: { viseme_O: 1 },
-  U: { viseme_U: 1 },
-  // WQ is close enough to U that it is not worth a tenth shape to sculpt.
-  WQ: { viseme_WQ: 1 },
-  L: { viseme_L: 1 },
-  etc: { viseme_etc: 1 },
+  MBP: { viseme_MBP: 1 }, FV: { viseme_FV: 1 }, E: { viseme_E: 1 },
+  AI: { viseme_AI: 1 }, O: { viseme_O: 1 }, U: { viseme_U: 1 },
+  WQ: { viseme_WQ: 1 }, L: { viseme_L: 1 }, etc: { viseme_etc: 1 },
+};
+
+/** Apple's 52, for any head that ships those instead. */
+const RIG_ARKIT: Rig = {
+  rest: {},
+  MBP: { mouthClose: 0.92, mouthPressLeft: 0.35, mouthPressRight: 0.35 },
+  FV: { mouthLowerDownLeft: 0.45, mouthLowerDownRight: 0.45, mouthShrugUpper: 0.30 },
+  E: { mouthStretchLeft: 0.52, mouthStretchRight: 0.52, mouthSmileLeft: 0.18, mouthSmileRight: 0.18 },
+  AI: { mouthStretchLeft: 0.22, mouthStretchRight: 0.22 },
+  O: { mouthFunnel: 0.62, mouthPucker: 0.22 },
+  U: { mouthPucker: 0.68, mouthFunnel: 0.38 },
+  WQ: { mouthPucker: 0.90, mouthFunnel: 0.30 },
+  L: { tongueOut: 0.32, mouthStretchLeft: 0.14, mouthStretchRight: 0.14 },
+  etc: { mouthStretchLeft: 0.20, mouthStretchRight: 0.20 },
 };
 
 /**
- * Apple's 52, for any head that ships those instead. A vowel has to be
- * reconstructed out of a jaw angle plus a pucker plus two stretches, so it is
- * the worse fit — but a driver written against these names works on MetaHuman,
- * Ready Player Me and Apple's own capture without resculpting anything.
+ * How far the jaw opens for each shape, 0–1 of its authored range.
+ *
+ * This drives `Jaw_Open`, and on this model that one name reaches BOTH the head
+ * and the teeth — the teeth mesh's only shape is called `Jaw_Open` too, so they
+ * open together for free. That is what stops his teeth staying shut through an
+ * O or a pucker, where the lips part but nothing behind them does.
  */
-const RIG_ARKIT: Rig = {
-  rest: {},
-  MBP: { mouthClose: 0.92, mouthPressLeft: 0.35, mouthPressRight: 0.35, jawOpen: 0.04 },
-  FV: { mouthLowerDownLeft: 0.45, mouthLowerDownRight: 0.45, mouthShrugUpper: 0.30, jawOpen: 0.10 },
-  E: { jawOpen: 0.26, mouthStretchLeft: 0.52, mouthStretchRight: 0.52, mouthSmileLeft: 0.18, mouthSmileRight: 0.18 },
-  AI: { jawOpen: 0.62, mouthStretchLeft: 0.22, mouthStretchRight: 0.22 },
-  O: { jawOpen: 0.44, mouthFunnel: 0.62, mouthPucker: 0.22 },
-  U: { jawOpen: 0.18, mouthPucker: 0.68, mouthFunnel: 0.38 },
-  WQ: { jawOpen: 0.12, mouthPucker: 0.90, mouthFunnel: 0.30 },
-  L: { jawOpen: 0.34, tongueOut: 0.32, mouthStretchLeft: 0.14, mouthStretchRight: 0.14 },
-  etc: { jawOpen: 0.22, mouthStretchLeft: 0.20, mouthStretchRight: 0.20 },
-};
-
-/** How far the jaw opens for each shape, 0..1 of its own authored range. */
 const JAW: Record<Shape, number> = {
   rest: 0.02, MBP: 0, FV: 0.06, E: 0.30, AI: 0.85,
   O: 0.55, U: 0.22, WQ: 0.14, L: 0.45, etc: 0.28,
 };
 
-/** Exporters prefix and re-case: CC writes `Mouth_Press_L`, ARKit
- *  `mouthPressLeft`, Blender may write `mouthPressLeft.001`. */
-const canon = (x: string) => x.toLowerCase().replace(/[^a-z]/g, '')
-  .replace(/left$/, 'l').replace(/right$/, 'r');
-
-/** How far MBP may push the bottom lip up, as a fraction of mouth width.
- *  Measured on the Character Creator base the rig weights were tuned against,
- *  where MBP lifts it 1.07%. */
-const LIP_MAX = 0.018;
-
-interface Bound {
-  mesh: THREE.SkinnedMesh;
-  /** rig shape name → this mesh's influence index. */
-  map: Record<string, number>;
-  jaw: number | null;
-}
-
-export interface Face {
-  /** Ease the mouth towards `shape`. Call once per frame. */
+export interface Mouth {
+  /** Ease the mouth towards `shape`. Call once per frame, before `commit`. */
   update: (dt: number, shape: Shape) => void;
-  /** Which rig was matched, for the console. */
+  /** Which vocabulary was matched, for the console. */
   rig: 'sculpted nine' | 'Character Creator' | 'ARKit';
-  jawShape: string | null;
-}
-
-/** The biggest vertex displacement in a morph target, in mesh units. */
-function reachOf(mesh: THREE.SkinnedMesh, index: number): number {
-  const attr = mesh.geometry.morphAttributes?.position?.[index];
-  if (!attr) return 0;
-  let max = 0;
-  for (let v = 0; v < attr.count; v++) {
-    const d = Math.hypot(attr.getX(v), attr.getY(v), attr.getZ(v));
-    if (d > max) max = d;
-  }
-  return max;
+  /** How many of the rig's shapes the mesh actually has. */
+  matched: string[];
+  missing: string[];
 }
 
 /**
- * The jaw is its own channel, and on this head it is a SHAPE rather than a
- * bone: the armature in the file is a few joints baked in so the graft has
- * landmarks, and the jaw among them carries no skin weight, because the opening
- * was authored as a morph. Picked by reach rather than by name — the file
- * carries both `Jaw_Open` and a custom `jaw_open`, and the custom one moves
- * twice as far.
- */
-function findJaw(mesh: THREE.SkinnedMesh): number | null {
-  const dict = mesh.morphTargetDictionary;
-  if (!dict) return null;
-  let best = 0, found: number | null = null;
-  for (const name of Object.keys(dict)) {
-    if (!/jaw/i.test(name) || /forward|back|up|down|left|right|_l$|_r$/i.test(name)) continue;
-    const r = reachOf(mesh, dict[name]);
-    if (r > best) { best = r; found = dict[name]; }
-  }
-  return found;
-}
-
-/**
- * A weight in the rig is not a distance.
+ * Bind the timeline to a face.
  *
- * RIG_CC says MBP is V_Explosive at 1.00 plus Mouth_Close at 0.60, and those
- * numbers were chosen by looking at one face. On that face Mouth_Close is a
- * modest press; on this one it is among the largest shapes on the mesh, so the
- * same 0.60 hauls the bottom lip over the top one and the whole mouth reads
- * wrong. So the rig states an intent and the mesh is measured against it: find
- * the mouth, find its bottom half and its width, work out how far MBP lifts it,
- * and take any overshoot out of the single shape doing the most lifting — not
- * out of all of them, or the press that makes an M an M goes too.
+ * Unlike the old grafted head, nothing here writes influences: it asks the rig
+ * for what it wants and the rig composites. A blink and a viseme are both
+ * opinions about the same face, and the compositor is what keeps them from
+ * cancelling each other out.
  */
-function calibrateLips(mesh: THREE.SkinnedMesh, map: Record<string, number>, rig: Rig): Rig {
-  const mbp = rig.MBP;
-  const pos = mesh.geometry.attributes.position;
-  const targets = mesh.geometry.morphAttributes?.position;
-  if (!mbp || !pos || !targets?.length) return rig;
-
-  // The mouth is wherever the mapped shapes actually move vertices.
-  const reach = new Float32Array(pos.count);
-  for (const name in map) {
-    const attr = targets[map[name]];
-    if (!attr) continue;
-    for (let v = 0; v < pos.count; v++) {
-      const q = Math.hypot(attr.getX(v), attr.getY(v), attr.getZ(v));
-      if (q > reach[v]) reach[v] = q;
-    }
-  }
-  const idx = Array.from(reach.keys()).sort((a, b) => reach[b] - reach[a]).slice(0, 700);
-  if (idx.length < 40) return rig;
-  let midY = 0;
-  for (const v of idx) midY += pos.getY(v);
-  midY /= idx.length;
-  const lower = idx.filter((v) => pos.getY(v) < midY);
-  if (lower.length < 20) return rig;
-  let xl = Infinity, xh = -Infinity;
-  for (const v of idx) { const x = pos.getX(v); if (x < xl) xl = x; if (x > xh) xh = x; }
-  const width = xh - xl;
-  if (!(width > 0)) return rig;
-
-  let total = 0, worst: string | null = null, worstRise = 0;
-  for (const name in mbp) {
-    const i = map[name];
-    if (i == null || !targets[i]) continue;
-    let sum = 0;
-    for (const v of lower) sum += targets[i].getY(v);
-    const rise = (sum / lower.length) * mbp[name];
-    total += rise;
-    if (rise > worstRise) { worstRise = rise; worst = name; }
-  }
-  const frac = total / width;
-  if (frac <= LIP_MAX || !worst || worstRise <= 0) return rig;
-
-  const over = total - LIP_MAX * width;
-  const k = Math.max(0, (worstRise - over) / worstRise);
-  const tuned = { ...mbp, [worst]: mbp[worst] * k };
-  console.log(`visemes: MBP lifted the lip ${(frac * 100).toFixed(2)}% of mouth width; ` +
-    `${worst} ${mbp[worst].toFixed(2)} -> ${tuned[worst].toFixed(2)}`);
-  return { ...rig, MBP: tuned };
-}
-
-/**
- * Bind the timeline to a grafted head. Every mesh with morph targets is driven,
- * since the face is split across primitives.
- */
-export function createFace(head: GraftedHead): Face {
-  const names = Object.keys(head.morphs);
-  const have = names.map(canon);
-
-  // Which vocabulary does this mesh speak? Whichever it has more of.
+export function createMouth(face: FaceRig): Mouth {
+  const have = new Set(face.names.map(canonicalShapeName));
   const score = (rig: Rig) => {
     const want = new Set<string>();
-    for (const sh of Object.keys(rig) as Shape[]) for (const k in rig[sh]) want.add(canon(k));
+    for (const sh of Object.keys(rig) as Shape[]) for (const k in rig[sh]) want.add(canonicalShapeName(k));
     let hit = 0;
-    for (const w of want) if (have.some((h) => h === w || h.includes(w))) hit++;
+    for (const w of want) if (have.has(w)) hit++;
     return hit / want.size;
   };
-  /* Best fit wins, sculpted first: a mesh that has the purpose-built nine is
-     saying exactly what each mouth position should look like, and no amount of
-     reconstructing one out of ARKit parts beats being told. */
   const sculpted = score(RIG_SCULPTED);
-  let rig = sculpted >= 0.85 ? RIG_SCULPTED
+  const rig = sculpted >= 0.85 ? RIG_SCULPTED
     : score(RIG_CC) >= score(RIG_ARKIT) ? RIG_CC : RIG_ARKIT;
   const which = rig === RIG_SCULPTED ? 'sculpted nine'
     : rig === RIG_CC ? 'Character Creator' : 'ARKit';
 
   const wanted = new Set<string>();
   for (const sh of Object.keys(rig) as Shape[]) for (const k in rig[sh]) wanted.add(k);
+  const matched = [...wanted].filter((w) => have.has(canonicalShapeName(w)));
+  const missing = [...wanted].filter((w) => !have.has(canonicalShapeName(w)));
 
-  const bound: Bound[] = [];
-  for (const mesh of head.meshes) {
-    const dict = mesh.morphTargetDictionary;
-    if (!dict || !mesh.morphTargetInfluences) continue;
-    const keys = Object.keys(dict);
-    const ck = keys.map(canon);
-    const map: Record<string, number> = {};
-    for (const w of wanted) {
-      const cw = canon(w);
-      let i = ck.indexOf(cw);
-      // Several shapes can contain the name we want: CC ships Mouth_Funnel_Up_L
-      // next to plain Mouth_Funnel, and taking the first match drove O and U off
-      // a corner variant. Shortest name wins — that is the plain shape.
-      if (i < 0) {
-        for (let j = 0; j < ck.length; j++) {
-          if (ck[j].includes(cw) && (i < 0 || ck[j].length < ck[i].length)) i = j;
-        }
-      }
-      if (i >= 0) map[w] = dict[keys[i]];
-    }
-    bound.push({ mesh, map, jaw: findJaw(mesh) });
-  }
-
-  // Calibrated once, on whichever primitive carries the most mouth — and only
-  // where the weights were somebody's guess. A sculpted shape at weight 1 is the
-  // artist's own statement of the pose; there is nothing to correct.
-  const widest = bound.reduce<Bound | null>((best, b) =>
-    (!best || Object.keys(b.map).length > Object.keys(best.map).length ? b : best), null);
-  if (widest && rig !== RIG_SCULPTED) rig = calibrateLips(widest.mesh, widest.map, rig);
-
-  const jawName = (() => {
-    const b = bound.find((x) => x.jaw != null);
-    if (!b || b.jaw == null) return null;
-    const dict = b.mesh.morphTargetDictionary!;
-    return Object.keys(dict).find((k) => dict[k] === b.jaw) ?? null;
-  })();
-  console.log(`visemes: ${which} rig, jaw shape ${jawName ?? 'none'}`);
-
+  /** Where each shape currently sits, so it can be eased rather than snapped. */
+  const now = new Map<string, number>();
+  for (const w of wanted) now.set(w, 0);
   let jawNow = 0;
-  /* Once the mouth has finished closing there is nothing left to ease, and
-     writing zeros over the influences every frame would fight anything else that
-     wants the face — the test sliders in the tuning panel, for one. So the
-     driver hands the face back when it is done with it. */
-  let settled = false;
 
   const update = (dt: number, shape: Shape) => {
-    if (shape === 'rest' && settled) return;
     const target = rig[shape] ?? rig.rest;
-    // Closing your lips is a movement, not a relaxation. Opening fast and
-    // closing slow reads well for a face relaxing and badly for an M: the jaw is
-    // still degrees open when the closure is over and the lips never meet. Any
-    // commanded shape is reached fast; only the drift back to neutral is lazy.
+    /* Closing your lips is a movement, not a relaxation. Opening fast and
+       closing slow reads well for a face relaxing and badly for an M: the jaw is
+       still degrees open when the closure is over and the lips never meet. Any
+       commanded shape is reached fast; only the drift back to neutral is lazy. */
     const k = 1 - Math.pow(1 - (shape === 'rest' ? 0.28 : 0.50), dt * 60);
-    for (const b of bound) {
-      const inf = b.mesh.morphTargetInfluences!;
-      for (const name in b.map) {
-        const i = b.map[name];
-        inf[i] += ((target[name] ?? 0) - inf[i]) * k;
-      }
+    for (const name of wanted) {
+      const next = (now.get(name) ?? 0) + ((target[name] ?? 0) - (now.get(name) ?? 0)) * k;
+      now.set(name, next);
+      if (next > 0.001) face.want(name, next);
     }
-    // A sculpted shape already contains its own jaw opening, so the separate
-    // jaw channel would open it twice.
-    jawNow += ((rig === RIG_SCULPTED ? 0 : JAW[shape] ?? 0) - jawNow) * k;
-    // Written last, straight onto the influence: whatever set the mouth shape
-    // does not know the jaw is a separate channel, and the jaw has to survive it.
-    for (const b of bound) {
-      if (b.jaw != null) b.mesh.morphTargetInfluences![b.jaw] = jawNow;
-    }
-
-    if (shape !== 'rest') { settled = false; return; }
-    /* How far the pose still is from where rest wants it — NOT how far it is
-       from zero. The resting jaw is 0.02 rather than 0, because a rest between
-       two words is a mouth at ease and not a mouth clamped shut, and measuring
-       against zero meant the face never finished arriving and the driver held
-       onto it forever. */
-    let biggest = Math.abs(jawNow - (rig === RIG_SCULPTED ? 0 : JAW.rest));
-    for (const b of bound) {
-      const inf = b.mesh.morphTargetInfluences!;
-      for (const name in b.map) biggest = Math.max(biggest, Math.abs(inf[b.map[name]] - (rig.rest[name] ?? 0)));
-    }
-    if (biggest > 1e-3) return;
-    // Snapped rather than left a millionth short, so the panel's sliders start clean.
-    for (const b of bound) {
-      const inf = b.mesh.morphTargetInfluences!;
-      for (const name in b.map) inf[b.map[name]] = rig.rest[name] ?? 0;
-      if (b.jaw != null) inf[b.jaw] = rig === RIG_SCULPTED ? 0 : JAW.rest;
-    }
-    jawNow = rig === RIG_SCULPTED ? 0 : JAW.rest;
-    settled = true;
+    jawNow += ((JAW[shape] ?? 0) - jawNow) * k;
+    if (jawNow > 0.001) face.want('Jaw_Open', jawNow);
   };
 
-  return { update, rig: which, jawShape: jawName };
+  return { update, rig: which, matched, missing };
 }

@@ -7,7 +7,10 @@ import {
 } from './kitchenEnvironment';
 import { createCameraRig, DEFAULT_RIG } from './cameraRig';
 import { createWander, DEFAULT_WANDER } from './wander';
-import { graftHead, DEFAULT_HEAD_FIT, type GraftedHead } from './head';
+import {
+  createFaceRig, createAlive, DEFAULT_ALIVE,
+  type FaceRig, type Alive, type ExpressionName,
+} from './face';
 import { loadCharacter, createCharacterLights, type Character, type CharacterLights } from './character';
 import { pickQuality, QUALITY } from './quality';
 import { createRoomLights, DEFAULT_ROOM_LIGHTS, type RoomLights } from './roomLights';
@@ -16,11 +19,19 @@ import { createConversation, type Conversation } from './talk';
 /** On the rug in front of the stove, where the HDR probe was rendered. */
 export const CHARACTER_SPOT = new THREE.Vector3(-0.3, 0, 1.7);
 
+/** Larger than life on purpose: at his measured height he reads as a small
+ *  figure at the back of a wide room. */
+const CHARACTER_HEIGHT = 2.1;
+
 /**
  * Where the assets live. '/' in dev, '/<repo>/' on GitHub Pages — every asset
  * path has to go through this or it 404s once deployed under a subpath.
  */
 const ASSETS = import.meta.env.BASE_URL;
+
+/** Set by the panel: one shape it wants held open, re-asked for every frame
+ *  because the compositor clears what it is not told again. */
+let held: () => void = () => {};
 
 /**
  * The Cloudflare Worker that holds the keys: Claude on `POST /`, the ElevenLabs
@@ -78,16 +89,13 @@ try {
     // Larger than life on purpose: at a measured 1.75 m he reads as a small
     // figure at the back of a wide room. Colin's reference has him with more
     // presence than that.
-    height: 2.1,
+    height: CHARACTER_HEIGHT,
     envMap: kitchen.envMap,
     // The probe reads about 4x lower than the baked room in practice. The
     // lightmaps recover their true level by multiplying by encodeScale (8); the
     // probe gets no such compensation, so he needs it here or he sits well below
     // the room he is standing in.
     envMapIntensity: 1.1,
-    // Desktop overrides the GLB's darker skin with the lighter repaint. The
-    // mobile GLB has it baked in already, so it overrides nothing.
-    baseColorMap: settings.characterSkin && `${ASSETS}character/${settings.characterSkin}`,
     // Colin's own numbers, dialled in on the live panel against the room rather
     // than derived: the diffuse fed back as emission at 0.59, roughness 0.75.
     // Emission is the knob that sets his level — it adds light the tone curve
@@ -123,44 +131,18 @@ try {
   if (settings.lensMm !== undefined) kitchen.framing.referenceFov = fovForLens(settings.lensMm);
 
   /**
-   * The grafted face — OFF while the visemes are being sculpted onto the
-   * full-body mesh itself.
+   * His face: three meshes off one skeleton, and the layers that move them.
    *
-   * It was always the hacky way round: a second head on a different rig, hung
-   * off the head joint, with the body's own head thrown away in the shader. It
-   * worked, but it is two meshes where one will do, it costs a second set of
-   * face textures, and the grafted head is not the head Colin modelled. Once the
-   * body carries its own `viseme_*` shapes none of that is needed — see
-   * VISEMES.md for the set, and `src/visemes.ts` already knows how to drive them.
-   *
-   * Everything below stays wired up, so this is one flag either way. With it
-   * off, `cutBodyHead` never runs and his own head is simply left alone.
+   * The head graft is gone — `colin.glb` is the whole character, so there is no
+   * second rig to fit, no head to discard in a shader, and no second set of face
+   * textures. `Colin_Head_MIX` on the head mesh is a base shape rather than an
+   * expression and has to sit at 1 for his head to be his head; the rig writes
+   * it every frame.
    */
-  const USE_HEAD_GRAFT = false;
-
-  label.textContent = USE_HEAD_GRAFT ? 'Loading his face' : 'Nearly there';
-  let head: GraftedHead | null = null;
-  try {
-    if (!USE_HEAD_GRAFT) throw new Error('head graft disabled');
-    head = await graftHead(colin, `${ASSETS}character/${settings.headGlb}`, {
-      renderer,
-      envMap: kitchen.envMap,
-      envMapIntensity: 1,
-      emissiveIntensity: 0.65,
-      roughness: 0.8,
-      fit: { ...DEFAULT_HEAD_FIT },
-      // Only where the GLB does not already carry them.
-      skins: settings.headSkins && Object.fromEntries(
-        Object.entries(settings.headSkins).map(([m, f]) => [m, `${ASSETS}character/${f}`]),
-      ),
-    });
-    console.log(`head grafted — ${Object.keys(head.morphs).length} blendshapes, ` +
-      `scale ${head.measuredScale.toFixed(3)}`);
-  } catch (err) {
-    // Not fatal: without it he is the body's own head and cannot lip-sync.
-    if (USE_HEAD_GRAFT) console.warn('head graft failed, keeping the body head:', err);
-    else console.log('head graft off — his own head, no visemes yet');
-  }
+  const face = createFaceRig(colin.model);
+  const alive = createAlive({ ...DEFAULT_ALIVE });
+  console.log(`face — ${face.names.length} shapes across ${face.meshes.length} meshes, `
+    + `base shape ${face.ready ? 'found' : 'MISSING'}`);
 
   // He walks the open strip of floor on his own; the camera drifts after him.
   // No gesture and no permission prompt — the microphone will want one of those
@@ -185,8 +167,12 @@ try {
   // impossible one, and there is no reason to take the voice away while the
   // shapes are being sculpted.
   const talk: Conversation = createConversation(
-    { endpoint: BRAIN, persona: PERSONA, head, colin, wander, camera },
+    { endpoint: BRAIN, persona: PERSONA, face, alive, colin, wander, camera },
   );
+  if (talk.mouth) {
+    console.log(`visemes — ${talk.mouth.rig} rig, ${talk.mouth.matched.length} shapes matched`
+      + (talk.mouth.missing.length ? `, missing ${talk.mouth.missing.join(', ')}` : ''));
+  }
 
   const resize = () => {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, settings.maxPixelRatio));
@@ -222,9 +208,16 @@ try {
     // their rotation into the hips, and this moves it onto the root so he keeps
     // it when the clip loops.
     wander.applyRootMotion();
-    // After the mixer: the visemes write morph influences, and a clip that
-    // animated the face would otherwise stomp them on the way past.
+    /* The face, after the mixer so a clip that animates it cannot stomp the
+       result, and in one order every frame: clear, then the mouth, then the
+       blinks and glances and brows, then write. Everything between the clear and
+       the write is asking rather than setting, which is what lets a blink and a
+       viseme both have their say about the same face. */
+    face.beginFrame();
     talk.update(dt);
+    alive.update(dt, face);
+    held();
+    face.commit();
     rig.update(dt);
     renderer.clear();
 
@@ -237,11 +230,11 @@ try {
     renderer.render(characterScene, camera);   // Colin, lit by his own rig
   });
 
-  buildTuningPanel(kitchen.manifest.exposure, lightmapped, colin, lights, look, roomExposure, kitchen, resize, wander, rig, head, talk, roomLights);
+  buildTuningPanel(kitchen.manifest.exposure, lightmapped, colin, lights, look, roomExposure, kitchen, resize, wander, rig, face, alive, talk, roomLights);
 
   // Debug handles. From the devtools console: kitchen.interactive.Fridge_Door,
   // kitchen.lightmapped[0].lightMapIntensity, new THREE.Raycaster(), ...
-  Object.assign(window, { renderer, kitchen, colin, wander, rig, head, talk, roomLights, THREE });
+  Object.assign(window, { renderer, kitchen, colin, wander, rig, face, alive, talk, roomLights, THREE });
 
   loading.classList.add('done');
   document.body.classList.add('ready');
@@ -262,7 +255,7 @@ try {
       `exposure ${manifest.exposure}, lightMapIntensity ${manifest.encodeScale}π`,
   );
   console.log(
-    `colin ready — measured ${colin.measuredHeight.toFixed(3)}m, fitted to 1.75m, ` +
+    `colin ready — measured ${colin.measuredHeight.toFixed(3)}m, fitted to ${CHARACTER_HEIGHT}m, ` +
       `${colin.clips.length} clips`,
   );
 } catch (err) {
@@ -290,7 +283,8 @@ function buildTuningPanel(
   resize: () => void,
   wander: ReturnType<typeof createWander>,
   rig: ReturnType<typeof createCameraRig>,
-  head: GraftedHead | null,
+  face: FaceRig,
+  alive: Alive,
   talk: Conversation,
   roomLights: RoomLights,
 ) {
@@ -350,33 +344,26 @@ function buildTuningPanel(
   roam.add(rig.config, 'swayDeg', 0, 10, 0.1).name('mouse sway °');
   roam.open();
 
-  if (head) {
-    const face = gui.addFolder('Face graft');
-    const f = head.fit;
-    face.add(f, 'scale', 0.5, 2, 0.005).name('head scale').onChange(head.apply);
-    face.add(f, 'offsetY', -0.3, 0.3, 0.002).name('offset up (m)').onChange(head.apply);
-    face.add(f, 'offsetZ', -0.3, 0.3, 0.002).name('offset fwd (m)').onChange(head.apply);
-    face.add(f, 'pitchDeg', -30, 30, 0.5).name('pitch °').onChange(head.apply);
-    face.add(f, 'yawDeg', -30, 30, 0.5).name('yaw °').onChange(head.apply);
-    // How much of a vertex has to belong to the head bone before it is thrown
-    // away. Too low and the collar goes with it; too high and a skullcap stays.
-    face.add(f, 'cut', 0.1, 1, 0.01).name('head cut').onChange((v: number) => {
-      colin.model.traverse((o) => {
-        for (const m of [].concat((o as THREE.Mesh).material as never) as THREE.Material[]) {
-          const u = m?.userData?.headCut as { value: number } | undefined;
-          if (u) u.value = v;
-        }
-      });
-    });
-    const visemes = Object.keys(head.morphs).filter((n) => n.startsWith('V_'));
-    const demo = { viseme: visemes[0] ?? '', amount: 0 };
-    if (visemes.length) {
-      face.add(demo, 'viseme', visemes).name('test viseme')
-        .onChange(() => { head.clearMorphs(); head.setMorph(demo.viseme, demo.amount); });
-      face.add(demo, 'amount', 0, 1, 0.01).name('amount')
-        .onChange((v: number) => { head.clearMorphs(); head.setMorph(demo.viseme, v); });
-    }
-    face.open();
+  {
+    const fx = gui.addFolder('Face');
+    const a = alive.config;
+    fx.add(a, 'enabled').name('blinks and glances');
+    fx.add(a, 'blinkMin', 0.5, 8, 0.1).name('blink every, min s');
+    fx.add(a, 'blinkMax', 1, 20, 0.1).name('blink every, max s');
+    fx.add(a, 'gaze', 0, 1, 0.01).name('eye travel');
+    fx.add(a, 'brow', 0, 0.6, 0.01).name('brow drift');
+    // Hold an expression to look at it. They are written to be subtle, which
+    // means the only way to judge one is to see it on its own.
+    const demo = { expression: 'neutral' as ExpressionName, shape: face.names[0] ?? '', amount: 0 };
+    fx.add(demo, 'expression', ['neutral', 'listening', 'thinking', 'amused', 'doubtful', 'surprised'])
+      .name('hold expression')
+      .onChange((v: ExpressionName) => alive.express(v, 9999));
+    /* Any single shape, held. `want` is cleared every frame by the compositor,
+       so a one-shot write would vanish; this re-asks for it each frame instead. */
+    fx.add(demo, 'shape', face.names).name('test shape');
+    fx.add(demo, 'amount', 0, 1, 0.01).name('amount');
+    held = () => { if (demo.amount > 0) face.want(demo.shape, demo.amount); };
+    fx.open();
   }
 
   {
@@ -424,7 +411,7 @@ function buildTuningPanel(
   const pose = {
     clip: colin.clips.find((c) => c.startsWith('idle')) ?? colin.clips[0],
     turn: 0,
-    height: 2.1,
+    height: CHARACTER_HEIGHT,
     shadow: 1,
   };
   him.add(pose, 'clip', colin.clips).name('animation').onChange((v: string) => colin.play(v));

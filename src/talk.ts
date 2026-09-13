@@ -16,8 +16,8 @@ import * as THREE from 'three';
 import { createBrain, type Brain } from './brain';
 import { createVoice, type Voice } from './voice';
 import { createEars, canListen, type Ears } from './listen';
-import { createFace, type Face } from './visemes';
-import type { GraftedHead } from './head';
+import { createMouth, type Mouth } from './visemes';
+import type { FaceRig, Alive } from './face';
 import type { Character } from './character';
 import type { createWander } from './wander';
 
@@ -28,9 +28,10 @@ export interface TalkOptions {
   endpoint: string;
   /** Which character the Worker should answer and speak as. */
   persona?: string;
-  /** The mesh carrying the viseme shapes. Without one he still talks; his mouth
-   *  just does not move, which is the state while the shapes are being sculpted. */
-  head: GraftedHead | null;
+  /** His face. Without one he still talks; his mouth just does not move. */
+  face: FaceRig | null;
+  /** The idle layer — blinks, gaze, brows. Told when to look at you. */
+  alive: Alive | null;
   colin: Character;
   wander: Wander;
   camera: THREE.Camera;
@@ -45,7 +46,7 @@ export interface Conversation {
   brain: Brain;
   voice: Voice;
   ears: Ears;
-  face: Face | null;
+  mouth: Mouth | null;
 }
 
 /** How fast he turns to face you once you have said something, in degrees per
@@ -53,12 +54,12 @@ export interface Conversation {
 const ATTEND_DEG = 90;
 
 export function createConversation(opts: TalkOptions): Conversation {
-  const { endpoint, persona, head, colin, wander, camera } = opts;
+  const { endpoint, persona, face, alive, colin, wander, camera } = opts;
 
   const brain = createBrain(endpoint, persona);
   const voice = createVoice(endpoint, persona);
   const ears = createEars();
-  const face = head ? createFace(head) : null;
+  const mouth = face ? createMouth(face) : null;
 
   const say = document.getElementById('say');
   const mic = document.getElementById('mic') as HTMLButtonElement | null;
@@ -85,6 +86,10 @@ export function createConversation(opts: TalkOptions): Conversation {
     engaged = yes;
     if (yes) { wander.halt(); wander.config.enabled = false; }
     else wander.config.enabled = true;
+    /* Eyes on you for as long as this lasts. He turns to face the camera while
+       engaged, so straight ahead IS at you — and meeting someone's eye is most
+       of what separates being answered from being talked near. */
+    alive?.lookAt(yes ? 0 : null, 0);
     mic?.classList.toggle('busy', yes);
     if (mic && listening) mic.textContent = yes ? 'his turn' : 'listening';
   };
@@ -93,6 +98,9 @@ export function createConversation(opts: TalkOptions): Conversation {
     if (brain.busy) return;
     ears.mute();
     engage(true);
+    // A beat of thinking on his face while the model is out, so the pause reads
+    // as considering rather than as nothing happening.
+    alive?.express('thinking', 30);
     caption(heard, '…');
     let reply = '';
     try {
@@ -104,6 +112,9 @@ export function createConversation(opts: TalkOptions): Conversation {
       return;
     }
     if (!reply) { engage(false); ears.unmute(); return; }
+    // People blink as they start to speak, near enough always.
+    alive?.express('neutral', 0);
+    alive?.blinkNow();
     const started = await voice.speak(reply);
     if (!started) {
       // No voice — the text is still the answer, so leave it on screen.
@@ -117,7 +128,13 @@ export function createConversation(opts: TalkOptions): Conversation {
     ears.unmute();
   };
 
-  ears.onPartial = (text) => { if (!brain.busy && !voice.speaking) caption(text, ''); };
+  ears.onPartial = (text) => {
+    if (brain.busy || voice.speaking) return;
+    caption(text, '');
+    // Brows up a touch while you are mid-sentence: he is listening.
+    alive?.express('listening', 1.2);
+    alive?.lookAt(0, 0);
+  };
   ears.onSentence = (text) => { void answer(text); };
   ears.onStatus = status;
 
@@ -153,7 +170,7 @@ export function createConversation(opts: TalkOptions): Conversation {
 
   const update = (dt: number) => {
     voice.update();
-    face?.update(dt, voice.shape());
+    mouth?.update(dt, voice.shape());
     if (!engaged) return;
     // Turn to whoever is talking to him. The camera is the only stand-in for a
     // person we have.
@@ -169,7 +186,7 @@ export function createConversation(opts: TalkOptions): Conversation {
   };
 
   return {
-    update, brain, voice, ears, face,
+    update, brain, voice, ears, mouth,
     say: (text: string) => { void answer(text); },
     get listening() { return listening; },
   };

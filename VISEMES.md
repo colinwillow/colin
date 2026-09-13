@@ -1,72 +1,72 @@
-# Visemes to sculpt
+# His face
 
-Nine blendshapes on the full-body mesh, and the graft goes away.
+`colin.glb` carries the whole character — body, outfit, headphones, head, eyes
+and teeth on one skeleton — so there is no head graft any more, no second rig to
+fit, and no second set of face textures. What follows is what the face has and
+who is allowed to move it.
 
-`viseme-reference.png` is the picture of all ten positions, rendered off the
-current grafted head so you can see what each one is meant to be. `rest` is the
-neutral mesh, so there are **nine shapes to sculpt**.
+## The three meshes
 
-## The set
+| mesh | shapes | what it owns |
+|---|---|---|
+| `head` | 42 | the visemes, the brows, the blinks, the cheeks — and `Colin_Head_MIX` |
+| `eyes` | 5 | `Look_Left` / `Look_Right` / `Look_Up` / `Look_Down`, `Cross_Eyed` |
+| `teeth` | 1 | `Jaw_Open` |
 
-Preston Blair's ten, which has been the working set for hand-drawn animation
-since the forties because it is the fewest that still reads as speech. `etc` is
-the generic consonant — every sound the mouth barely changes for — and `rest` is
-the closed idle.
+**`Colin_Head_MIX` is a base shape, not an expression.** It has to sit at 1 for
+his head to be the right head, so `src/face.ts` writes it every frame and no
+layer is allowed to touch it. Measured at the shipped framing, dropping it moves
+about 0.5% of his pixels — it is a refinement rather than a transformation, but
+it is his, and it costs nothing to hold.
 
-| Shape | Name to export | Sounds | What it is |
-|---|---|---|---|
-| rest | *(neutral mesh)* | — | Closed, at ease. Not clamped shut — a rest between two words is a mouth relaxing, not a mouth sealing. |
-| MBP | `viseme_MBP` | m b p | Lips pressed together. The one shape that closes the mouth mid-word. |
-| FV | `viseme_FV` | f v | Top teeth on the bottom lip. |
-| E | `viseme_E` | e | Wide, corners pulled out, jaw a third open. |
-| AI | `viseme_AI` | a i | The big one. Jaw well open, corners neutral. |
-| O | `viseme_O` | o | Round, jaw half open, lips funnelled forward. |
-| U | `viseme_U` | u | Smaller and rounder than O, more pucker, less jaw. |
-| WQ | `viseme_WQ` | w q | Tightest pucker, jaw nearly closed. |
-| L | `viseme_L` | l | Jaw open with the tongue tip up behind the teeth. Worth the tongue — it is the only shape where it shows. |
-| etc | `viseme_etc` | c d g k n r s t th y z | The in-between consonant: jaw slightly open, corners slightly wide. Not a strong shape. |
+**One name opens the jaw and the teeth together.** The head's shape is
+`Jaw_Open_MIX` and the teeth's is `Jaw_Open`; names are matched with punctuation,
+case and the export's `MIX` suffix stripped, so both canonicalise to the same key
+and a single `want('Jaw_Open', v)` reaches both. That is what stops his teeth
+staying shut through an O or a pucker, where the lips part and nothing behind
+them does.
 
-## Things worth knowing before you sculpt
+## Everything asks, one place writes
 
-**Put the jaw in the shape.** With a purpose-sculpted set, each shape *is* the
-mouth position — jaw included. The code drives a separate jaw channel only for
-rigs that need a vowel reconstructed out of parts, and it turns that channel off
-when it sees this set, so nothing opens twice.
-
-**Weight 1 is the pose.** Nothing gets calibrated, scaled or mixed. Whatever you
-sculpt at full strength is exactly what appears on screen when that sound is
-spoken, so sculpt the pose you want to see rather than an ingredient. That is the
-whole reason this set beats the Character Creator one: on the grafted head, MBP
-was lifting the bottom lip 4.75% of the mouth's width where the rig intended
-1.8%, and the code had to measure the mesh and correct it.
-
-**A shape only ever shows for about 55–90 ms.** Under 55 ms it cannot be seen at
-all, so the code never lets one run shorter than that. That means shapes want to
-be readable at a glance and a little stronger than feels right in isolation —
-they are never held.
-
-**Adjacent identical shapes merge.** "ough" is one hold, not four flickers, and
-"ll" in *hello* is one longer L. So there is no need to sculpt variants.
-
-**WQ is nearly U.** If nine is one too many, sculpt U and copy it tighter.
-
-## Exporting
-
-Name them exactly as the table says — matching is case-insensitive and ignores
-punctuation, so `viseme_MBP`, `Viseme.MBP` and `visemeMbp` all land. The code
-picks this rig automatically when it finds at least 85% of the names, and logs
-which rig it chose:
+Several things want the face at the same time — a viseme, a blink, a raised brow,
+a glance — and if each wrote morph influences directly they would cancel each
+other out. So each frame runs in a fixed order:
 
 ```
-visemes: sculpted nine rig, jaw shape none
+face.beginFrame()   everything back to rest, except the base shape
+talk.update(dt)     the mouth asks for its viseme and its jaw
+alive.update(dt)    blinks, gaze and brow drift ask for theirs
+face.commit()       the collected result is written once
 ```
 
-If it says `Character Creator` or `ARKit` instead, the names did not match.
+Between the clear and the write, layers call `want(name, value)` and the highest
+bid for a given shape wins — so a blink at 1 is never undone by an expression
+that also has an opinion about the eyelid.
 
-## Turning the face back on
+## What moves on its own
 
-`src/main.ts` has `USE_HEAD_GRAFT = false`. With the shapes on the body mesh
-there is no graft to turn back on — delete the flag, the `graftHead` call, and
-`src/head.ts`, and point `createConversation` at the body instead. Everything in
-`src/visemes.ts`, `src/voice.ts`, `src/listen.ts` and `src/brain.ts` is
-independent of which mesh carries the shapes.
+`src/face.ts`, in the panel under **Face**:
+
+- **Blinks.** Fast shut (55 ms), brief hold, slower open (115 ms) — the closing
+  is almost instant on a real face and the opening is what you actually perceive.
+  Every 3.2–9 s, and 30% of the time it doubles, because a face that blinks on a
+  perfectly even schedule reads as a metronome. Measured: about one every 3.6 s.
+- **Gaze.** Mostly small saccades around wherever he is pointed, with a larger
+  break-off a quarter of the time. Eyes snap and then sit still; they do not
+  glide. `alive.lookAt(x, y)` overrides it, and the conversation uses that to put
+  his eyes on you for as long as he is answering.
+- **Brows.** Two slow sine waves at rates that never line up, so the brows are
+  never quite still and never obviously cycling. Small on purpose.
+- **Expressions.** `neutral`, `listening`, `thinking`, `amused`, `doubtful`,
+  `surprised` — weights on shapes that already exist. Understated, because they
+  run underneath a mouth that is doing something else, and anything strong enough
+  to read on its own reads as a grimace in motion. `thinking` goes on while the
+  model is out; `listening` while you are mid-sentence.
+
+## What is missing
+
+- **No tongue shapes in this export.** The `L` viseme is the lip shape and the
+  jaw alone, which reads fine, since the tongue only shows on a wide-open L.
+  If a tongue mesh arrives with its own shapes, `RIG_CC.L` in `src/visemes.ts`
+  is the one line to extend.
+- No `Cross_Eyed` consumer yet. It is there when something wants it.
