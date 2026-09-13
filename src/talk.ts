@@ -17,6 +17,8 @@ import { createBrain, type Brain } from './brain';
 import { createVoice, type Voice } from './voice';
 import { createEars, canListen, type Ears } from './listen';
 import { createMouth, type Mouth } from './visemes';
+import { createWave, type Wave } from './wave';
+import { moodFor, EXPRESSION_FOR, type Mood } from './mood';
 import type { FaceRig, Alive } from './face';
 import type { Character } from './character';
 import type { createWander } from './wander';
@@ -47,6 +49,10 @@ export interface Conversation {
   voice: Voice;
   ears: Ears;
   mouth: Mouth | null;
+  /** The bottom-of-screen level meter, drawn from the render loop. */
+  wave: Wave | null;
+  /** What the last exchange put him in. Drives which idle he falls into. */
+  readonly mood: Mood;
 }
 
 /** How fast he turns to face you once you have said something, in degrees per
@@ -63,6 +69,22 @@ export function createConversation(opts: TalkOptions): Conversation {
 
   const say = document.getElementById('say');
   const mic = document.getElementById('mic') as HTMLButtonElement | null;
+  const chip = document.getElementById('captions') as HTMLButtonElement | null;
+  const canvas = document.getElementById('wave') as HTMLCanvasElement | null;
+  const wave = canvas ? createWave(canvas, voice) : null;
+
+  /* Captions out of the way, and a chip to bring them back. Tapping the text
+     itself hides it, which is where anyone annoyed by it is already looking. */
+  let captionsOn = true;
+  const showCaptions = (on: boolean) => {
+    captionsOn = on;
+    say?.classList.toggle('off', !on);
+    chip?.classList.toggle('on', !on);
+  };
+  say?.addEventListener('click', () => showCaptions(false));
+  chip?.addEventListener('click', () => showCaptions(true));
+
+  let mood: Mood = 'neutral';
 
   // Held from the moment a sentence is heard until the last sample has played:
   // this is what stops him wandering off and what turns him to face you.
@@ -70,7 +92,7 @@ export function createConversation(opts: TalkOptions): Conversation {
   let listening = false;
 
   const caption = (heard: string, reply: string) => {
-    if (!say) return;
+    if (!say || !captionsOn) return;
     say.innerHTML = '';
     if (heard) {
       const b = document.createElement('b');
@@ -90,6 +112,7 @@ export function createConversation(opts: TalkOptions): Conversation {
        engaged, so straight ahead IS at you — and meeting someone's eye is most
        of what separates being answered from being talked near. */
     alive?.lookAt(yes ? 0 : null, 0);
+    if (wave) wave.meter.mode = yes ? 'listening' : 'idle';
     mic?.classList.toggle('busy', yes);
     if (mic && listening) mic.textContent = yes ? 'his turn' : 'listening';
   };
@@ -112,6 +135,14 @@ export function createConversation(opts: TalkOptions): Conversation {
       return;
     }
     if (!reply) { engage(false); ears.unmute(); return; }
+
+    /* What the exchange did to him. Read off both halves — what you said and
+       what he answered — so a flat reply to a sharp remark still lands. It only
+       chooses an idle and an expression today; the point is that the hook is in
+       one place for when there is a fighting stance to put behind it. */
+    mood = moodFor(heard, reply);
+    wander.moodIdle = mood;
+    alive?.express(EXPRESSION_FOR[mood], 6);
     // People blink as they start to speak, near enough always.
     alive?.express('neutral', 0);
     alive?.blinkNow();
@@ -129,6 +160,7 @@ export function createConversation(opts: TalkOptions): Conversation {
   };
 
   ears.onPartial = (text) => {
+    wave?.heard();
     if (brain.busy || voice.speaking) return;
     caption(text, '');
     // Brows up a touch while you are mid-sentence: he is listening.
@@ -171,6 +203,7 @@ export function createConversation(opts: TalkOptions): Conversation {
   const update = (dt: number) => {
     voice.update();
     mouth?.update(dt, voice.shape());
+    wave?.update(dt);
     if (!engaged) return;
     // Turn to whoever is talking to him. The camera is the only stand-in for a
     // person we have.
@@ -186,7 +219,8 @@ export function createConversation(opts: TalkOptions): Conversation {
   };
 
   return {
-    update, brain, voice, ears, mouth,
+    update, brain, voice, ears, mouth, wave,
+    get mood() { return mood; },
     say: (text: string) => { void answer(text); },
     get listening() { return listening; },
   };

@@ -97,12 +97,12 @@ try {
     // the room he is standing in.
     envMapIntensity: 1.1,
     // Colin's own numbers, dialled in on the live panel against the room rather
-    // than derived: the diffuse fed back as emission at 0.59, roughness 0.75.
+    // than derived: the diffuse fed back as emission at 0.72, roughness 0.75.
     // Emission is the knob that sets his level — it adds light the tone curve
     // then compresses, so the top of his range flattens and the colour goes with
     // it — and it is paired with his exposure below, which came down to 0.58 at
     // the same time. Panel: Colin — lighting.
-    emissiveIntensity: 0.59,
+    emissiveIntensity: 0.72,
     roughness: 0.75,
   });
   colin.root.position.copy(CHARACTER_SPOT);
@@ -378,6 +378,11 @@ function buildTuningPanel(
     chat.add(talk.voice, 'volume', 0, 4, 0.05).name('voice volume');
     chat.add({ hush: () => talk.voice.stop() }, 'hush').name('stop talking');
     chat.add({ forget: () => talk.brain.forget() }, 'forget').name('forget the conversation');
+    // What the last exchange left him in, read-only: it is inferred, not set.
+    const shown = { mood: '' };
+    chat.add(shown, 'mood').name('his mood').listen()
+      .onChange(() => { shown.mood = talk.mood; });
+    setInterval(() => { shown.mood = talk.mood; }, 500);
   }
 
   const shot = gui.addFolder('Camera');

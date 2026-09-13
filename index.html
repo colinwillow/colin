@@ -61,6 +61,22 @@
         min-height: 1.45em;
       }
       #say b { font-weight: 500; color: #c8a06a; }
+      #say.off { display: none; }
+      /* Tap the captions to put them away; the chip brings them back. */
+      #say { pointer-events: auto; cursor: pointer; }
+      #captions {
+        pointer-events: auto; -webkit-appearance: none; appearance: none;
+        display: none; place-items: center; width: 34px; height: 34px;
+        border: 1px solid #3a322b; border-radius: 10px;
+        background: rgba(16, 14, 12, 0.72); backdrop-filter: blur(6px);
+        color: #8a8178; cursor: pointer; padding: 0;
+      }
+      #captions.on { display: grid; }
+      #captions svg { width: 17px; height: 17px; }
+
+      /* The level meter. Real samples when he speaks; his own idea of how
+         loudly you are talking when you do — see voice.ts. */
+      #wave { width: min(230px, 58vw); height: 22px; display: block; opacity: 0.9; }
       #mic {
         pointer-events: auto; -webkit-appearance: none; appearance: none;
         border: 1px solid #3a322b; border-radius: 999px; padding: 11px 22px;
@@ -86,6 +102,14 @@
     </div>
     <div id="talk">
       <div id="say"></div>
+      <button id="captions" type="button" title="show captions" aria-label="show captions">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="5" width="18" height="14" rx="3" />
+          <path d="M8 11h2M8 15h5M14 11h2" />
+        </svg>
+      </button>
+      <canvas id="wave" width="460" height="44"></canvas>
       <button id="mic" type="button" disabled>talk</button>
     </div>
     <script type="module" src="/src/main.ts"></script>

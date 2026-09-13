@@ -90,6 +90,12 @@ export const QUALITY: Record<Quality, QualitySettings> = {
     maxPixelRatio: 2,
     maxAnisotropy: Infinity,
     sway: 'mouse',
+    // The same pairing phones got. Desktop kept Blender's 24 mm at its own spot
+    // for a while because nobody had looked at it — but the near edge of where
+    // he can walk was being set by DESKTOP's framing, so leaving it alone was
+    // costing both tiers the depth. Same lens, same dolly, one look.
+    lensMm: 25,
+    dollyM: 2.6,
     characterGlb: 'colin.glb',
   },
   /**

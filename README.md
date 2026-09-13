@@ -35,6 +35,8 @@ src/kitchenEnvironment.ts       loads the GLB, wires up lightmaps and the HDR pr
 src/character.ts                loads Colin, fits him to height, contact shadow
 src/wander.ts                   walks him around the room on his own
 src/face.ts                     his face: the shape rig, blinks, gaze, expressions
+src/mood.ts                     what the conversation leaves him in
+src/wave.ts                     the level meter along the bottom
 src/talk.ts                     the conversation: ears -> brain -> voice -> mouth
 src/listen.ts                   the browser's speech recognition, and when to deafen it
 src/brain.ts                    the Worker chat call, streamed
@@ -530,11 +532,31 @@ not a turret welded to them. Pitch gets a much smaller share of the budget
 (15%), since the room is wide and short and a camera that tilts as much as it
 pans looks seasick.
 
-**He mostly stands.** Every pause used to end in a walk, and walk-pause-walk-pause
-is the one rhythm a person never has. A pause now rolls: half the time it ends in
-nothing but a different idle, a quarter in a turn on the spot, and only the rest
-in going somewhere. Measured over three simulated minutes: **93% standing, 3%
-turning, 3% walking**.
+**He mostly stands, but is not parked.** Every pause used to end in a walk, and
+walk-pause-walk-pause is the one rhythm a person never has. A pause now rolls: a
+third of the time it ends in nothing but a different idle, a fifth in a turn on
+the spot, and the rest in going somewhere. Measured over three simulated minutes:
+**84% standing, 8% turning, 8% walking**.
+
+Never the same idle twice running, and **idles that read as a mood are held out
+of the neutral pool** — falling into the dejected one at random would make the
+mood layer mean nothing. Idles are matched by pattern rather than listed, so a
+re-export with a dozen of them needs no code change.
+
+### Mood
+
+`src/mood.ts`. Not commands — "do a backflip" is a different and easier feature.
+This is the part where he reacts to what was said rather than to what he was
+asked for: something sharp puts him on his guard, food turns his mind to the
+fridge. A mood picks an expression and narrows which idle he falls into, and
+nothing else yet, which is the point — the hook is in one place for when there is
+a fighting stance or a fridge to put behind it.
+
+**It reads keywords, and that is a stand-in.** Where this belongs is the model:
+the Worker already streams a control frame after a NUL byte, so a `mood` on that
+frame would replace the whole of `moodFor` without anything downstream noticing.
+Until the Worker's prompt knows to send one, keywords are honest about being a
+guess and cost nothing.
 
 **How wide he can roam is a camera question, not a floor question.** The floor
 was never the limit — it runs clear from x -2.25 to +1.0 — but anything outside
@@ -736,6 +758,18 @@ assumed:
 Any shape that is commanded is reached fast and only the drift back to neutral is
 lazy: closing your lips is a movement, not a relaxation, and easing both ways
 left the jaw degrees open through an M.
+
+### The bar along the bottom
+
+**His half is real** — the voice already has an analyser on the way to the
+speakers, so those are actual samples. **Yours is not.** Drawing your real
+waveform means `getUserMedia`, and speech recognition is a separate grant from an
+audio stream: the browser asks for the microphone twice, which is a bad trade for
+a decoration. So while you talk it is driven by the recogniser — words arriving
+push it up, silence lets it fall. It tracks *whether* you are talking, not what
+it sounds like. Warm while he speaks, cool while you do.
+
+Tapping the captions hides them; a small chip brings them back.
 
 ### Checking it without the network
 

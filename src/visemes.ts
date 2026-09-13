@@ -8,6 +8,7 @@
 // end time for every character it spoke, which is the real thing — silent
 // letters get a near-zero span, and letters sharing one sound get spans that
 // abut, so "ough" collapses to one hold instead of four flickers.
+import type * as THREE from 'three';
 import { canonicalShapeName, type FaceRig } from './face';
 
 export type Shape = 'rest' | 'MBP' | 'FV' | 'E' | 'AI' | 'O' | 'U' | 'WQ' | 'L' | 'etc';
@@ -171,6 +172,8 @@ const RIG_CC: Rig = {
   // V_Explosive is the smallest-displacement shape on the mesh: it refines a
   // closure rather than making one, so Mouth_Close does the pressing.
   MBP: { V_Explosive: 1.00, Mouth_Close: 0.55, Mouth_Press_L: 0.35, Mouth_Press_R: 0.35 },
+  // ^ Mouth_Close is the one weight that cannot be trusted as written; see
+  //   calibrateLips, which measures it against the mesh and trims it.
   FV: { V_Dental_Lip: 1.00 },
   E: { V_Wide: 0.88 },
   AI: { V_Open: 0.90, V_Lip_Open: 0.35 },
@@ -235,6 +238,95 @@ export interface Mouth {
  * opinions about the same face, and the compositor is what keeps them from
  * cancelling each other out.
  */
+/**
+ * How far MBP may push the bottom lip up, as a fraction of the mouth's width.
+ * Measured on a face where the rig's weights looked right, which is the only
+ * thing a number like this can be.
+ */
+const LIP_MAX = 0.018;
+
+/**
+ * A weight in the rig is not a distance.
+ *
+ * `MBP` asks for `Mouth_Close` at 0.55, and that number was chosen by looking at
+ * one face. On a mesh where `Mouth_Close` happens to be a large shape the same
+ * 0.55 hauls the bottom lip up over the top one — which is exactly the
+ * over-exaggerated closed mouth you see, and it is a property of the mesh, not
+ * of the rig. So the rig states an intent and the mesh is measured against it:
+ * find the mouth (the vertices the mapped shapes actually move), find its bottom
+ * half and its width, work out how far MBP lifts it, and take any overshoot out
+ * of the single shape doing the most lifting — not out of all of them, or the
+ * press that makes an M an M goes with it.
+ */
+function calibrateLips(face: FaceRig, rig: Rig, mapped: string[]): Rig {
+  const mbp = rig.MBP;
+  if (!mbp) return rig;
+
+  // Whichever mesh carries the most of the mouth is the one to measure on.
+  let best: { mesh: THREE.Mesh; index: Map<string, number> } | null = null;
+  for (const mesh of face.meshes) {
+    const dict = mesh.morphTargetDictionary;
+    const targets = mesh.geometry.morphAttributes?.position;
+    if (!dict || !targets?.length) continue;
+    const index = new Map<string, number>();
+    for (const name of mapped) {
+      for (const key of Object.keys(dict)) {
+        if (canonicalShapeName(key) === canonicalShapeName(name)) index.set(name, dict[key]);
+      }
+    }
+    if (!best || index.size > best.index.size) best = { mesh, index };
+  }
+  if (!best || best.index.size < 3) return rig;
+
+  const { mesh, index } = best;
+  const pos = mesh.geometry.attributes.position;
+  const targets = mesh.geometry.morphAttributes.position ?? [];
+  if (!targets.length) return rig;
+
+  const reach = new Float32Array(pos.count);
+  for (const i of index.values()) {
+    const attr = targets[i];
+    if (!attr) continue;
+    for (let v = 0; v < pos.count; v++) {
+      const q = Math.hypot(attr.getX(v), attr.getY(v), attr.getZ(v));
+      if (q > reach[v]) reach[v] = q;
+    }
+  }
+  const idx = Array.from(reach.keys()).sort((a, b) => reach[b] - reach[a]).slice(0, 700);
+  if (idx.length < 40) return rig;
+  let midY = 0;
+  for (const v of idx) midY += pos.getY(v);
+  midY /= idx.length;
+  const lower = idx.filter((v) => pos.getY(v) < midY);
+  if (lower.length < 20) return rig;
+  let xl = Infinity, xh = -Infinity;
+  for (const v of idx) { const x = pos.getX(v); if (x < xl) xl = x; if (x > xh) xh = x; }
+  const width = xh - xl;
+  if (!(width > 0)) return rig;
+
+  let total = 0, worst: string | null = null, worstRise = 0;
+  for (const name of Object.keys(mbp)) {
+    const i = index.get(name);
+    if (i === undefined || !targets[i]) continue;
+    let sum = 0;
+    for (const v of lower) sum += targets[i].getY(v);
+    const rise = (sum / lower.length) * mbp[name];
+    total += rise;
+    if (rise > worstRise) { worstRise = rise; worst = name; }
+  }
+  const frac = total / width;
+  if (frac <= LIP_MAX || !worst || worstRise <= 0) {
+    console.log(`visemes: MBP lifts the lip ${(frac * 100).toFixed(2)}% of mouth width — within range`);
+    return rig;
+  }
+  const over = total - LIP_MAX * width;
+  const k = Math.max(0, (worstRise - over) / worstRise);
+  const tuned = { ...mbp, [worst]: mbp[worst] * k };
+  console.log(`visemes: MBP lifted the lip ${(frac * 100).toFixed(2)}% of mouth width; `
+    + `${worst} ${mbp[worst].toFixed(2)} -> ${tuned[worst].toFixed(2)}`);
+  return { ...rig, MBP: tuned };
+}
+
 export function createMouth(face: FaceRig): Mouth {
   const have = new Set(face.names.map(canonicalShapeName));
   const score = (rig: Rig) => {
@@ -254,6 +346,8 @@ export function createMouth(face: FaceRig): Mouth {
   for (const sh of Object.keys(rig) as Shape[]) for (const k in rig[sh]) wanted.add(k);
   const matched = [...wanted].filter((w) => have.has(canonicalShapeName(w)));
   const missing = [...wanted].filter((w) => !have.has(canonicalShapeName(w)));
+  // Sculpted sets state the pose at weight 1 and have nothing to correct.
+  const tuned = rig === RIG_SCULPTED ? rig : calibrateLips(face, rig, matched);
 
   /** Where each shape currently sits, so it can be eased rather than snapped. */
   const now = new Map<string, number>();
@@ -261,7 +355,7 @@ export function createMouth(face: FaceRig): Mouth {
   let jawNow = 0;
 
   const update = (dt: number, shape: Shape) => {
-    const target = rig[shape] ?? rig.rest;
+    const target = tuned[shape] ?? tuned.rest;
     /* Closing your lips is a movement, not a relaxation. Opening fast and
        closing slow reads well for a face relaxing and badly for an M: the jaw is
        still degrees open when the closure is over and the lips never meet. Any

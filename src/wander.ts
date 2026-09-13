@@ -6,6 +6,7 @@
 // walk speed is a number we pick rather than one baked into the clip.
 import * as THREE from 'three';
 import type { Character } from './character';
+import { IDLE_FOR, type Mood } from './mood';
 
 export interface WanderArea {
   /** Floor rectangle he keeps inside, in world metres. */
@@ -85,22 +86,28 @@ export const DEFAULT_WANDER: WanderConfig = {
    * z 1.8. The clear span is -2.15 to 0.40 and holds all the way to z 3.4, so
    * the floor is not what limits how near the camera he comes: FRAMING is.
    *
-   * The near edge is 2.5 because that is what DESKTOP can hold — measured, his
-   * feet leave the bottom of a 24 mm landscape frame just past 2.6. On a phone,
-   * which now carries 25 mm and 2.6 m of dolly, he stays whole past 3.9, so
-   * there is a lot more depth available the day desktop gets the same lens and
-   * dolly pairing. Until then this is the bound both tiers can keep. */
-  area: { minX: -2.1, maxX: 0.35, minZ: 1.2, maxZ: 2.5 },
+   * The near edge was 2.5 for as long as desktop sat at Blender's own 24 mm with
+   * no dolly: his feet left the bottom of a landscape frame just past 2.6, and
+   * that capped BOTH tiers. Desktop now carries the same 25 mm and 2.6 m back,
+   * and in `lens` mode the vertical field of view does not change with aspect —
+   * so the two tiers frame him identically down the middle and a wider screen is
+   * strictly easier. Measured, both hold him whole past z 3.6.
+   *
+   * So 3.2, which is two metres of depth against 1.3, and takes him from 5.5 m
+   * off the lens to 4.3 m at his nearest. The clear floor runs out at 3.4, so it
+   * is the room that caps this now rather than the shot. */
+  area: { minX: -2.1, maxX: 0.35, minZ: 1.2, maxZ: 3.2 },
   speed: 1.15,
   turnSpeed: 120,
   // He was standing 12-13 seconds between two-second walks, which on a phone
   // means you almost always catch him standing still and conclude he is idle.
-  // Long enough that standing is his default state rather than a gap between
-  // walks. Half of these end in nothing but a change of idle.
-  pauseMin: 4,
-  pauseMax: 11,
-  restChance: 0.5,
-  turnChance: 0.25,
+  // Standing is still his default, but 93% of the time was too much of it: he
+  // read as parked. Shorter pauses and a better-than-even chance of going
+  // somewhere afterwards.
+  pauseMin: 3,
+  pauseMax: 8,
+  restChance: 0.34,
+  turnChance: 0.18,
   maxFacingAwayDeg: 115,
 };
 
@@ -108,6 +115,12 @@ type Phase = 'idle' | 'turning' | 'walking';
 
 export interface Wander {
   update: (dt: number) => void;
+  /**
+   * What the last exchange left him in. Biases which idle he falls into, and
+   * nothing more — he still stands, turns and walks the same way. Set by the
+   * conversation; `neutral` is the whole range.
+   */
+  moodIdle: Mood;
   /**
    * Move the turn clip's baked rotation off the hips and onto the root.
    *
@@ -187,7 +200,10 @@ export function createWander(
      Matched loosely rather than listed, so the next re-export does not silently
      leave him standing still. Kneeling and the dances are deliberately out: one
      is a pose he cannot stand up from and the others are not idling. */
-  const idles = colin.clips.filter((c) => /idle/i.test(c) && !/kneel|exhaust|sad/i.test(c));
+  /* Anything idle-shaped, minus the ones that are a pose rather than a stand:
+     kneeling has no way back up, and the moods are for the conversation to pick
+     rather than for him to fall into on his own. */
+  const idles = colin.clips.filter((c) => /idle/i.test(c) && !/kneel|sit|lay|sleep/i.test(c));
   const walk = colin.clips.find((c) => /^walk_fwd_neutral$/i.test(c))
     ?? colin.clips.find((c) => /^walk/i.test(c));
   /* He has proper turn-in-place clips and nothing was using them: a 180° change
@@ -239,7 +255,38 @@ export function createWander(
     startYaw: number;
   } | null = null;
 
-  const pickIdle = () => idles[Math.floor(Math.random() * idles.length)] ?? colin.clips[0];
+  /* Never the same idle twice running. With only a couple in the file that is
+     barely a change; with a dozen it is most of what makes standing watchable,
+     which is why the filter is a pattern rather than a list. */
+  /* Idles that read as a mood are held back from the neutral pool. Otherwise he
+     falls into the sad one at random and the mood layer means nothing — being
+     visibly dejected has to be something the conversation did to him, not
+     something that happens every fourth pause. */
+  const flavoured = Object.entries(IDLE_FOR)
+    .filter(([mood]) => mood !== 'neutral')
+    .flatMap(([, patterns]) => patterns);
+  const plainIdles = idles.filter((c) => !flavoured.some((p) => p.test(c)));
+
+  let lastIdle = '';
+  let moodIdle: Mood = 'neutral';
+  const pickIdle = () => {
+    if (!idles.length) return colin.clips[0];
+    /* A mood narrows the pool rather than naming a clip. If the export has no
+       sad idle in it the mood costs nothing and he picks from the plain ones,
+       which is better than him standing still because a name went missing. */
+    let pool = plainIdles.length ? plainIdles : idles;
+    for (const pattern of IDLE_FOR[moodIdle] ?? []) {
+      const hit = idles.filter((c) => pattern.test(c));
+      if (hit.length) { pool = hit; break; }
+    }
+    if (pool.length === 1) return (lastIdle = pool[0]);
+    let next = lastIdle;
+    for (let i = 0; i < 8 && next === lastIdle; i++) {
+      next = pool[Math.floor(Math.random() * pool.length)];
+    }
+    lastIdle = next;
+    return next;
+  };
   const rand = (lo: number, hi: number) => lo + Math.random() * (hi - lo);
 
   const chooseTarget = () => {
@@ -499,5 +546,11 @@ export function createWander(
 
   matchStrideToSpeed();
   colin.play(pickIdle(), 0);
-  return { update, applyRootMotion, config, halt, get phase() { return phase; }, get target() { return target; } };
+  return {
+    update, applyRootMotion, config, halt,
+    get moodIdle() { return moodIdle; },
+    set moodIdle(v: Mood) { moodIdle = v; },
+    get phase() { return phase; },
+    get target() { return target; },
+  };
 }

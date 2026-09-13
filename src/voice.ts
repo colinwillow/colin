@@ -49,6 +49,11 @@ export interface Voice {
   /** Fires once the last piece has finished playing. */
   onEnd?: () => void;
   volume: number;
+  /** 0–1, how loud he is right now. Already smoothed. */
+  readonly level: number;
+  /** Fill `into` with the current waveform, -1..1. False when nothing is
+   *  playing, in which case `into` is left alone. */
+  waveform: (into: Float32Array) => boolean;
 }
 
 export function createVoice(endpoint: string, persona?: string): Voice {
@@ -65,6 +70,17 @@ export function createVoice(endpoint: string, persona?: string): Voice {
   let startedAt = 0;             // performance.now() of the first sample
   const api: Voice = {
     get speaking() { return playing; },
+    get level() { return level; },
+    waveform: (into) => {
+      if (!playing || !analyser) return false;
+      /* The analyser's own buffer is fftSize long; whatever the caller brought
+         is resampled into it, so the drawing code picks its own resolution. */
+      if (!time) return false;
+      analyser.getFloatTimeDomainData(time);
+      const step = time.length / into.length;
+      for (let i = 0; i < into.length; i++) into[i] = time[Math.floor(i * step)];
+      return true;
+    },
     update, shape, speak, stop, arm, volume: 1,
   };
 
