@@ -866,6 +866,29 @@ confirm `flipY = false`. If reflections look mirrored, adjust
 `scene.environmentRotation`; they should be warm and bright on the window side
 (`-x`).
 
+## Add to Home Screen
+
+`public/icons/` plus `public/manifest.webmanifest`. Tap share → *Add to Home
+Screen* on iOS and it installs as **Colin**, opening without Safari's chrome.
+
+**The icon is full-bleed and square on purpose.** iOS lays its own superellipse
+mask over whatever it is handed, so corners rounded in the file get rounded
+twice and the gap between the two radii shows as dark wedges. The source art had
+a 28.6% radius baked in — rounder than the mask — so it is cropped *inside* that
+arc (94 px on each side of the 1085 px square, which is `r × (1 − 1/√2)`, the
+point where the corner arc stops eating the frame) rather than used as-is.
+
+The Android maskable icon is a separate file, inset to 78%, because that mask is
+a circle keeping only the middle 80% and it would otherwise crop his headphones
+off.
+
+`apple-mobile-web-app-capable` is what makes it launch standalone — iOS still
+reads only the prefixed spelling, so both are present. The status bar is
+translucent so the room runs under the clock, and the tuning panel carries a
+`safe-area-inset-top` margin to clear it.
+
+The tab favicon is still the little SVG kitchen glyph: at 32 px his face is mush.
+
 ## Live site (GitHub Pages)
 
 `.github/workflows/pages.yml` builds the app and publishes it to GitHub Pages on

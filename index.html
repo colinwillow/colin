@@ -6,7 +6,28 @@
          fixed 3D view only ever leaves the canvas stranded off-screen. -->
     <meta name="viewport"
           content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-    <title>Kitchen</title>
+    <title>Colin</title>
+
+    <!-- ADD TO HOME SCREEN.
+
+         The icon is deliberately full-bleed and square: iOS puts its own
+         superellipse mask over whatever it is given, so corners rounded in the
+         file get rounded twice and the difference shows as dark wedges. The
+         source art had a 28.6% radius baked in — rounder than the mask — so it
+         is cropped inside that arc rather than used as-is.
+
+         `apple-mobile-web-app-capable` is what makes the tap open it without
+         Safari's chrome; `mobile-web-app-capable` is the standard spelling, and
+         iOS still only reads the prefixed one. -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Colin" />
+    <!-- Translucent, so the room runs under the clock rather than sitting below
+         a black band. The panel below gets a safe-area inset to clear it. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#0b0a09" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0a09'/%3E%3Cpath d='M7 15h18v6a4 4 0 0 1-4 4H11a4 4 0 0 1-4-4z' fill='%235fc4bd'/%3E%3Crect x='5' y='12' width='22' height='3' rx='1.5' fill='%23c8a06a'/%3E%3C/svg%3E" />
     <style>
       :root { color-scheme: dark; }
@@ -89,8 +110,13 @@
       /* Thinking or talking: still armed, but not listening to you this second.
          Declared after .on so it wins on a button that is both. */
       #mic.busy { color: #c8a06a; background: rgba(16, 14, 12, 0.72); border-color: #6b5533; }
-      /* lil-gui sits top-right; keep it out of the way until the room is up */
-      .lil-gui.root { --width: 260px; opacity: 0; transition: opacity 0.5s ease 0.4s; }
+      /* lil-gui sits top-right; keep it out of the way until the room is up.
+         The top inset is for standalone mode, where the status bar is
+         translucent and would otherwise sit on top of the first row. */
+      .lil-gui.root {
+        --width: 260px; opacity: 0; transition: opacity 0.5s ease 0.4s;
+        margin-top: env(safe-area-inset-top);
+      }
       body.ready .lil-gui.root { opacity: 1; }
     </style>
   </head>
