@@ -53,8 +53,7 @@ public/kitchen/                 the baked assets, served verbatim
   lightmaps/LM_Props.webp       pottery, plants, books, jars
   lightmaps/LM_Interactive.webp the movable objects, baked at rest position
 public/character/
-  colin_slim.glb                the rigged character, from colinwillow/glorp
-  colin_diffuse_2k.webp         his skin, overriding the one inside the GLB
+  colin.glb                     the whole character: body, face, eyes, teeth, clips
 scripts/screenshot.mjs          optional headless render check (see below)
 scripts/talk-check.mjs          exercises the talking pipeline with the Worker stubbed
 ```
@@ -122,100 +121,18 @@ Read this before changing any materials or adding lights.
 
 ## The character
 
-`colin_stylized_01.glb` is Colin's export: one mesh, texture embedded as WebP,
-Draco-compressed, 66 joints and 49 animation clips (`idle_neutral_00..03`,
-`idle_happy_bob`, `idle_waving`, walks, runs, dances, falls, stand-ups). It
-supersedes `colin_slim.glb`, the original import from the Orb/glorp project,
-which had 36 clips and a much darker skin.
+`colin.glb` is all of him: body, outfit, headphones, head, eyes and teeth on one
+skeleton, Draco-compressed with its textures embedded as WebP — 66 joints, 19
+animation clips, and the face's morph targets along for the ride.
 
-### The face graft
+One file for every quality tier. Its textures are authored small (two at 1080,
+three at 512, about 320 KB packed and ~12 MB on the GPU), so there is nothing a
+KTX2 variant would save and no second asset tier to forget to rebuild.
 
-`colin_head.glb` carries the blendshapes — 23 morph targets per primitive, 12 of
-them visemes (`V_Open`, `V_Explosive`, `V_Tight_O`…). The body has none, so the
-head is hung off the body's head bone and the body's own head is thrown away.
-
-It is thrown away in the shader, not hidden. There is no separate head mesh to
-switch off — the body is one mesh with one material — and collapsing the head
-bone drags every vertex blended into the neck and shoulders inward with it, so
-the head goes and a funnel appears where it was. `cutBodyHead` sums each vertex's
-skin weight on the head bone into a `headW` attribute and the fragment shader
-discards anything above `cut`. Vertices only partly bound to the head survive,
-which is what keeps the collar.
-
-This is the stopgap: two files, one mostly wasted. A body exported with its head
-as its own material makes the cut a one-line hide.
-
-`colin_head.glb` has four materials and zero images, so the face textures are
-separate. Desktop loads them alongside; mobile gets `colin_head_ktx2.glb` with
-them baked in and compressed, because three 2K faces are **64 MB** of GPU as
-RGBA8 against **8 MB** as ETC1S — more than the room and body together were
-saving. `scripts/bake-head-textures.mjs` builds it.
-
-The fit is measured from his pose, so the pose has to be pinned: `mixer.setTime(0)`
-rather than `update(0)`, or the head comes out a different size on mobile than on
-desktop depending on which frame the load happened to reach.
-
-**Four things about the fit, each of which produced a different wrong answer:**
-
-- **The head bone's world scale is 0.0038**, since the armature is in centimetres
-  and then fitted to height. Anything parented to it inherits that, so a scale
-  that looks right in metres is out by a factor of 260.
-- **`Box3.setFromObject` is wrong for skinned meshes.** Stored positions are in
-  bind space and the shader places them with the bone matrices, not with
-  `matrixWorld`. Measuring raw gave a body 2 cm tall. `applyBoneTransform` is the
-  same arithmetic the shader does.
-- **`updateMatrixWorld` only walks downward.** Measuring the body from its own
-  subtree put his head at the world origin while the graft measured at his actual
-  position — two spaces, silently. `updateWorldMatrix(true, true)` walks parents.
-- **Bone matrices refresh at render time**, so between frames they hold the
-  previous pose; `skeleton.update()` before measuring. And measure in the pose he
-  is *rendered* in — `Skeleton.pose()` restores the bind scale, which on this rig
-  differs from the animated one by that same centimetre factor.
-
-The head also cancels the head bone's rest rotation, or the Mixamo rig's own
-orientation tips the Character Creator head down and sideways. Everything is in
-the panel under *Face graft*, including a viseme tester.
-
-- **Fitted, not scaled by a constant.** The rig arrives in centimetres under a
-  root scaled by 0.01, and it is skinned, so its own numbers say little about
-  final height — he measures 5.467 units in bind pose. `loadCharacter` measures
-  the bind pose and fits it to `height`, then drops his feet to `y = 0` and
-  centres him over `root.position`. A different body file can be dropped in
-  without retuning anything, and `colin.setHeight(m)` re-fits live.
-- **He is 2.1 m, deliberately.** At a literal 1.75 m he reads as a small figure at
-  the back of a wide room. The reference has him with more presence than that, so
-  he is scaled past life size. The panel's **height (m)** slider is this value.
-- **Lit by the probe plus a rig of his own.** See below — the room still has no
-  real-time lights.
-- **Contact shadow, not a cast shadow.** A soft ellipse on the floor, multiply
-  blended so it darkens the floor's baked light rather than laying grey over it.
-  Multiply ignores alpha, so the texture is opaque and fades to *white*; fading to
-  transparent would multiply the floor by zero and stamp a black square around
-  him. It sits at `y = 0.02` to clear the rug, which was hiding it.
-- **`frustumCulled = false`** on his meshes: skinned bounds are computed for the
-  bind pose, so a raised arm can leave the box and pop out mid-animation.
-
-The Colin folder in the tuning panel switches clip, turns him, and adjusts his
-brightness and shadow. From the console he is `window.colin` —
-`colin.play('idle_waving')`, `colin.clips`, `colin.root.position`.
-
-### Where his numbers come from
-
-The shipped values were dialled in on the live panel against the room, not
-derived, so treat them as one setting rather than nine independent ones —
-emission and his exposure in particular are a pair, since emission sets his level
-and the exposure sets where that level lands on the curve.
-
-| | |
-|---|---|
-| height | 2.1 m (larger than life, for presence at the back of a wide room) |
-| contact shadow | 1 |
-| HDR probe (`envMapIntensity`) | 1.1 |
-| key / fill / rim | 0.3 / 0.6 / 0.5 |
-| roughness | 0.75 |
-| self-illumination (`emissiveIntensity`) | 0.59 |
-| albedo lift | 1 |
-| tone curve / his exposure | ACESFilmic, 0.58 |
+It replaced a body GLB with a separately grafted head — two files, a shader that
+threw the body's own head away, and a second set of face textures. All of that
+machinery is gone; see **VISEMES.md** for what the face has now and `src/face.ts`
+for who is allowed to move it.
 
 ### Why he looks dark, and how he is lit
 
@@ -256,7 +173,7 @@ same three settings do the same job here:
 
 | | |
 |---|---|
-| `baseColorMap` | `Mat_diffuse_lighter.webp`, a repaint 1.45x brighter than the GLB's own skin |
+| `baseColorMap` | unused — `colin.glb` carries its own skin; the hook remains for an export that ships a dark one |
 | `emissiveIntensity` | 0.65, with the base colour map as the emission map |
 | `roughness` | 0.8 |
 
@@ -303,9 +220,12 @@ tile. The room simply has twice his linear resolution on its large surfaces, and
 each of its 4K maps covers a single material where his one 2K map covers skin,
 hair, hoodie, jeans, shoes and eyes at once, with only about 38% of the atlas
 populated. Exporting his atlas at 4K, or repacking his UVs to fill more of the 2K,
-is what would close the gap. Compression is not the cause: the re-exported
-`Mat_diffuse_lighter.webp` measures *sharper* than the skin embedded in the GLB
-(9.46 against 5.41), so the WebP-in, WebP-out round trip cost nothing visible.
+is what would close the gap. Compression is not the cause: a re-exported repaint
+measured *sharper* than the skin embedded in the GLB (9.46 against 5.41), so the
+WebP-in, WebP-out round trip cost nothing visible.
+
+(Measured on the body GLB that preceded `colin.glb`, whose one 2K atlas this
+describes. The current export splits the load across five smaller maps.)
 
 *Measuring this yourself:* freeze the idle first (`colin.mixer.timeScale = 0`).
 Sampling a patch of him while he breathes measures the animation, not the light —
@@ -334,11 +254,11 @@ room, he is still correctly occluded by the furniture, and his contact shadow
 still multiplies against the floor drawn in the first pass. `characterScene.environment`
 is the same probe, so the room's own light still reaches him.
 
-**To restyle him, replace `public/character/colin_diffuse_2k.webp`.** It is
-loaded over whatever base colour map the GLB carries, so a repainted atlas takes
-effect with no code change and no re-export. It must live under `public/` — files
-elsewhere in the repo are not served. The same hook is how the other bodies will
-be dressed: `colin_anim2` and `colin_animations_02` ship with no map at all.
+**To restyle him without a re-export,** point `baseColorMap` at a repainted atlas
+under `public/`: it is loaded over whatever base colour map the GLB carries, so it
+takes effect with no code change. Unused today — `colin.glb` carries its own — and
+kept for an export that ships a dark skin, which is what the hook was built for.
+Files must live under `public/`; anything elsewhere in the repo is not served.
 
 The **Colin — lighting** folder in the panel has the handles. `HDR probe` is his
 `envMapIntensity`; `key`/`fill`/`rim` are the three lights. The last two matter
@@ -368,7 +288,7 @@ Three, chosen by `src/quality.ts` at startup and overridable with
 > The manifest is the mobile one with three fields put back: `atlases` pointing
 > at `lightmaps_mobile_ktx2/*.ktx2`, `glb`, and `cameraFallback`.
 
-Colin is in the KTX2 pass too — `colin_stylized_01_ktx2.glb`, with the lighter
+Colin is not in the KTX2 pass — `colin.glb`'s textures are already small. The lighter
 skin baked in rather than overridden at runtime, which also spares a phone
 decoding the original 2K atlas just to throw it away. His skin as ETC1S costs
 5 MB against 21 MB as RGBA8. `scripts/bake-character-skin.mjs` does the baking
@@ -740,7 +660,7 @@ the shape *is* the mouth position at weight 1, so nothing is reconstructed,
 calibrated or mixed, and the separate jaw channel switches off because the shape
 carries its own jaw. That is the set in VISEMES.md and where this is heading.
 
-Failing that, `colin_head.glb` ships Character Creator's own visemes — shapes that *are* the
+Failing that, `colin.glb`'s head ships Character Creator's own visemes — shapes that *are* the
 vowels — so the rig maps straight onto them. Two things are measured rather than
 assumed:
 

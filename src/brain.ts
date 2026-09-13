@@ -38,7 +38,7 @@ export function createBrain(endpoint: string, persona?: string): Brain {
           persona: persona || undefined,
           // What is on screen while it answers, so it does not have to be told
           // where it is every turn.
-          state: { room: true, figure: { who: 'colin', model: 'colin_stylized_01' } },
+          state: { room: true, figure: { who: 'colin', model: 'colin' } },
         }),
       });
       if (!res.ok || !res.body) {

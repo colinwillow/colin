@@ -1,15 +1,14 @@
-// Loads Colin's rigged toon character into the kitchen.
+// Loads Colin's rigged character into the kitchen.
 //
-// The body is `colin_slim.glb`, brought over from the Orb/glorp project. Of the
-// figures there it is the only self-contained one: a single mesh, its texture
-// embedded, 82 joints, and 36 animation clips. The other bodies (colin_anim2)
-// need their skin supplied from images/textures/ and a separate head grafted on
-// at a bone, which is machinery worth porting only when the visemes come over
-// with it.
+// `colin.glb` is all of him — body, outfit, headphones, head, eyes and teeth on
+// one skeleton, textures embedded, with the face's morph targets along for the
+// ride. It replaced a body GLB plus a separately grafted head, which is why
+// there is no head-fitting machinery here any more; see src/face.ts.
 //
-// He is lit entirely by the room's HDR probe (scene.environment). Adding a light
-// for him would also fall on the walls, which are already baked, and roughly
-// double their brightness — hence the blob shadow below instead of a real one.
+// He is drawn in his own scene, in a second pass, so he can have lights at all:
+// the room's light is baked, so a light in the kitchen scene would fall on walls
+// that are already lit. That also means his shadow is a blob below him rather
+// than a real one.
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
@@ -46,11 +45,11 @@ export interface LoadCharacterOptions {
   /**
    * Replace the base colour map on every material that has one.
    *
-   * The skin that ships inside colin_slim.glb is near-black on the hoodie and
-   * jeans (mean albedo 0.0065 over the atlas), which is what makes him read as a
-   * silhouette in a bright room. Pointing this at a repainted atlas swaps it
-   * without touching the GLB. It is also how the other bodies will be dressed:
-   * colin_anim2 and colin_animations_02 export with no map at all.
+   * Unused now — `colin.glb` carries its own — and kept because it is the fix
+   * for an export that ships a dark one. The body GLB before it was near-black
+   * on the hoodie and jeans (mean albedo 0.0065 across the atlas), which made
+   * him read as a silhouette in a bright room; pointing this at a repainted
+   * atlas swapped it without touching the GLB.
    */
   baseColorMap?: string;
   /**

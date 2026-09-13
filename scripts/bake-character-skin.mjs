@@ -2,7 +2,12 @@
 // node_modules resolve (npm i -g @gltf-transform/cli, then npm i draco3dgltf there):
 //   node bake-character-skin.mjs <in.glb> <skin.webp> <out.glb>
 //
-// Bakes Mat_diffuse_lighter.webp into the character GLB, replacing the darker
+// UNUSED: colin.glb carries its own textures, and the repaint this was written
+// for is deleted. Kept because the technique is the fix if an export ever ships
+// a dark skin — it bakes a replacement base colour map into a character GLB,
+// which is what `baseColorMap` in src/character.ts does at runtime.
+//
+// Bakes a lighter atlas into the character GLB, replacing the darker
 // skin it ships with, so the mobile build needs no runtime override and never
 // decodes the original at all.
 import { NodeIO } from '@gltf-transform/core';
