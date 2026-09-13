@@ -23,7 +23,10 @@ const browser = await chromium.launch({
   args: ['--autoplay-policy=no-user-gesture-required', '--mute-audio',
          '--use-gl=swiftshader', '--enable-unsafe-swiftshader'],
 });
-const page = await browser.newPage({ viewport: { width: 900, height: 600 } });
+/* A phone viewport, deliberately: the desktop tier's textures never finish
+   decoding under software WebGL, and the part under test here is the timing,
+   not the pixels. */
+const page = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 page.on('console', (m) => console.log('  page:', m.text().slice(0, 200)));
 page.on('pageerror', (e) => console.log('  PAGE ERROR:', e.message));
 
@@ -74,17 +77,34 @@ await page.addInitScript(() => {
 });
 
 await page.goto(url, { waitUntil: 'load' });
-await page.waitForFunction(() => window.talk && window.head, null, { timeout: 180000 });
+await page.waitForFunction(() => window.talk && window.face, null, { timeout: 180000 });
 console.log('app up');
 
-const rigInfo = await page.evaluate(() => ({ rig: window.talk.face.rig, jaw: window.talk.face.jawShape,
-                                             morphs: Object.keys(window.head.morphs).length }));
+const rigInfo = await page.evaluate(() => ({ rig: window.talk.mouth.rig, matched: window.talk.mouth.matched.length,
+                                             missing: window.talk.mouth.missing, morphs: window.face.names.length }));
 console.log('face driver:', rigInfo);
 
 // Software WebGL renders one frame every couple of seconds and blocks the main
 // thread doing it, which starves the sampler below and proves nothing about the
 // mouth. The room is already up; stop drawing it.
 await page.evaluate(() => window.renderer.setAnimationLoop(null));
+/* With the loop off, nothing runs the face's clear/ask/write any more. This is
+   that order, exactly as main.ts has it — stepping `talk.update` on its own
+   would leave every influence at whatever the last real frame wrote. */
+await page.evaluate(() => {
+  /* `meshes[0]` is the eyes on this export, and the eyes are always moving, so
+     sampling it measures the gaze and not the mouth. The head is the mesh that
+     carries the base shape — and that shape is held at 1 every frame by design,
+     so it is excluded from the sampling below rather than winning it. */
+  window.headMesh = window.face.meshes.find((m) => 'Colin_Head_MIX' in m.morphTargetDictionary);
+  window.baseIndex = window.headMesh.morphTargetDictionary.Colin_Head_MIX;
+  window.step = (dt) => {
+    window.face.beginFrame();
+    window.talk.update(dt);
+    window.alive.update(dt, window.face);
+    window.face.commit();
+  };
+});
 // Talking has to survive a browser that never gave us a gesture: arm by hand.
 await page.evaluate(() => window.talk.voice.arm());
 await page.evaluate(() => window.talk.say('hello, where are you standing?'));
@@ -97,17 +117,20 @@ const trace = await page.evaluate(async () => {
   const t0 = performance.now();
   for (let i = 0; i < 420; i++) {
     await new Promise((r) => setTimeout(r, 20));
-    window.talk.update(0.02);
-    const inf = window.head.meshes[0].morphTargetInfluences;
+    step(0.02);
+    const inf = window.headMesh.morphTargetInfluences;
     let max = 0, which = -1;
-    for (let k = 0; k < inf.length; k++) if (Math.abs(inf[k]) > max) { max = Math.abs(inf[k]); which = k; }
+    for (let k = 0; k < inf.length; k++) {
+      if (k === window.baseIndex) continue;
+      if (Math.abs(inf[k]) > max) { max = Math.abs(inf[k]); which = k; }
+    }
     out.push({ ms: Math.round(performance.now() - t0), speaking: window.talk.voice.speaking,
                shape: window.talk.voice.shape(), max: +max.toFixed(3), which });
   }
   return out;
 });
 const names = await page.evaluate(() => {
-  const d = window.head.meshes[0].morphTargetDictionary;
+  const d = window.headMesh.morphTargetDictionary;
   return Object.fromEntries(Object.entries(d).map(([k, v]) => [v, k]));
 });
 
@@ -119,7 +142,7 @@ console.log('sent to the voice:', spoke);
 const shapes = [...new Set(trace.filter((t) => t.speaking).map((t) => t.shape))];
 const moved = trace.filter((t) => t.max > 0.05);
 console.log('shapes seen while speaking:', shapes.join(' '));
-console.log('frames with the mouth open:', moved.length, 'of', trace.length);
+console.log('frames with the face moving:', moved.length, 'of', trace.length);
 console.log('largest influence:', Math.max(...trace.map((t) => t.max)).toFixed(3));
 console.log('shapes driven:', [...new Set(moved.map((t) => names[t.which]))].join(' '));
 console.log('speaking window:', trace.findIndex((t) => t.speaking), '->', trace.map((t) => t.speaking).lastIndexOf(true));
@@ -127,12 +150,15 @@ const tail = trace.slice(-30);
 console.log('settled at the end:', tail.every((t) => !t.speaking), 'last max', tail[tail.length - 1].max);
 const changes = trace.filter((t, i) => i && t.shape !== trace[i - 1].shape).length;
 console.log('shape changes:', changes, 'over', Math.round((trace.at(-1).ms) / 1000) + 's');
+/* The compositor owns the face now, so "released" means something different:
+   set a shape by hand, run two composited frames, and it should be gone — the
+   clear at the top of the frame is what takes it back. */
 console.log('released the face:', await page.evaluate(() => {
-  const inf = window.head.meshes[0].morphTargetInfluences;
-  const before = Array.from(inf);
-  window.head.setMorph('V_Open', 0.7);
-  window.talk.update(0.016); window.talk.update(0.016);
-  const i = window.head.morphs.V_Open;
+  const inf = window.headMesh.morphTargetInfluences;
+  const before = Array.from(inf).filter((_, k) => k !== window.baseIndex);
+  window.face.set('Jaw_Open', 0.7);
+  for (let i = 0; i < 2; i++) step(0.016);
+  const i = window.headMesh.morphTargetDictionary.Jaw_Open_MIX;
   return { held: inf[i], wasRest: Math.max(...before.map(Math.abs)).toFixed(3) };
 }));
 console.log(trace.filter((_, i) => i % 12 === 0).map((t) => `${t.ms}:${t.shape}${t.max > 0.05 ? '*' : ''}`).join(' '));

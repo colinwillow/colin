@@ -14,6 +14,11 @@ export interface Brain {
   readonly log: { role: 'user' | 'assistant'; content: string }[];
   /** True while a question is out. */
   readonly busy: boolean;
+  /** Put something into the transcript that the model did not itself produce —
+   *  the greeting on the mic button, which is spoken locally but which the next
+   *  turn has to know about, or "who's this, then" reads as a non sequitur when
+   *  the answer to it arrives on its own. */
+  remember: (role: 'user' | 'assistant', content: string) => void;
   forget: () => void;
 }
 
@@ -74,6 +79,11 @@ export function createBrain(endpoint: string, persona?: string): Brain {
   return {
     ask, log,
     get busy() { return busy; },
+    remember: (role, content) => {
+      if (!content.trim()) return;
+      log.push({ role, content });
+      if (log.length > MAX_TURNS) log.splice(0, log.length - MAX_TURNS);
+    },
     forget: () => { log.length = 0; },
   };
 }

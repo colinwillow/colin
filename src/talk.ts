@@ -19,6 +19,7 @@ import { createEars, canListen, type Ears } from './listen';
 import { createMouth, type Mouth } from './visemes';
 import { createWave, type Wave } from './wave';
 import { moodFor, EXPRESSION_FOR, type Mood } from './mood';
+import { nextIntro } from './intros';
 import type { FaceRig, Alive } from './face';
 import type { Character } from './character';
 import type { createWander } from './wander';
@@ -154,9 +155,19 @@ export function createConversation(opts: TalkOptions): Conversation {
     }
   };
 
+  /** Open the mic for the first time, after the greeting. */
+  const openEars = () => {
+    if (!listening || ears.listening) return;
+    ears.start();
+    if (mic) mic.textContent = 'listening';
+  };
+
   voice.onEnd = () => {
     engage(false);
-    ears.unmute();
+    // The greeting is what opens the mic the first time; every reply after it
+    // just hands hearing back.
+    if (!ears.listening) openEars();
+    else ears.unmute();
   };
 
   ears.onPartial = (text) => {
@@ -190,13 +201,29 @@ export function createConversation(opts: TalkOptions): Conversation {
       }
       listening = true;
       mic.classList.add('on');
-      mic.textContent = 'listening';
-      // Both on the tap, because the tap is the only gesture we are guaranteed:
-      // the AudioContext will not start without one and neither will the
-      // recogniser. They are two separate permissions and nothing here can merge
-      // them — the Web Speech API does not expose its stream.
-      void voice.arm();
-      ears.start();
+      mic.textContent = 'his turn';
+      /* Greet first, listen second.
+       *
+       * The tap is the only gesture we are guaranteed — the AudioContext will
+       * not start without one and neither will the recogniser — but they do not
+       * have to happen at the same instant. Saying hello before opening the mic
+       * means the recogniser starts once, after he has finished, instead of
+       * starting, being talked over by his own greeting, and being restarted.
+       * One iOS start tone instead of two, and he is not listening to himself.
+       */
+      void (async () => {
+        engage(true);
+        const line = nextIntro();
+        caption('', line);
+        alive?.blinkNow();
+        /* He said it, so the transcript has to carry it: several of these ask
+           who is there, and the answer arrives as a bare name with nothing in
+           front of it unless the model can see what it is answering. */
+        brain.remember('assistant', line);
+        const spoke = await voice.speak(line);
+        // No voice available: no reason to make anyone wait for one.
+        if (!spoke) { engage(false); openEars(); }
+      })();
     });
   }
 

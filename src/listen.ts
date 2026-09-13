@@ -28,12 +28,22 @@ export interface Ears {
   /** Ask for the microphone and start. Must be called from a user gesture. */
   start: () => void;
   stop: () => void;
-  /** Deafen him while he talks: he hears himself through the speaker and
-   *  answers his own reply, forever. `abort` rather than `stop`, because stop
-   *  finalises whatever is pending — which is exactly his own words. */
+  /**
+   * Deafen him while he talks: he hears himself through the speaker and answers
+   * his own reply, forever.
+   *
+   * DOES NOT STOP THE SESSION. iOS plays a system tone on every
+   * `recognition.start()`, and it is not suppressible from a page — so the way
+   * to stop hearing it constantly is to start the recogniser as rarely as
+   * possible. Aborting and restarting around every single reply meant a tone per
+   * exchange; this keeps the session up and throws the results away instead,
+   * which costs nothing and is silent.
+   */
   mute: () => void;
-  /** Un-deafen, after the echo tail. */
+  /** Listen again, after the echo tail. */
   unmute: () => void;
+  /** True once the session is up, muted or not — i.e. the mic has been started
+   *  and does not need starting again. */
   readonly listening: boolean;
   /** Interim text, as it is being said. */
   onPartial?: (text: string) => void;
@@ -55,7 +65,7 @@ export function createEars(config: ListenConfig = DEFAULT_LISTEN): Ears {
 
   const api: Ears = {
     start, stop, mute, unmute,
-    get listening() { return on && !muted; },
+    get listening() { return on; },
   };
 
   /** Recognition's own final result and our gap timer race; whichever wins,
@@ -88,9 +98,11 @@ export function createEars(config: ListenConfig = DEFAULT_LISTEN): Ears {
       }
     };
     r.onend = () => {
-      // Safari ends the session on its own schedule. If we still want it, start
-      // it again — but not while muted, which is a deliberate abort.
-      if (on && !muted) { try { r.start(); } catch { /* already starting */ } }
+      /* Safari ends the session on its own schedule. If we still want it, start
+         it again — INCLUDING WHILE MUTED, because muting no longer aborts: a
+         session that dies mid-reply and is not restarted leaves him deaf for
+         good, and being deaf forever is worse than one more start tone. */
+      if (on) { try { r.start(); } catch { /* already starting */ } }
     };
     r.onresult = (e: any) => {
       if (muted || performance.now() < echoUntil) return;   // that was us
@@ -133,15 +145,17 @@ export function createEars(config: ListenConfig = DEFAULT_LISTEN): Ears {
     if (!on || muted) return;
     muted = true;
     heard = '';
-    if (rec) { try { rec.abort(); } catch { /* already gone */ } }
   }
 
   function unmute() {
     if (!on || !muted) return;
     muted = false;
+    /* Whatever the recogniser accumulated while he was talking is his own voice
+       coming back through the speaker. The session stayed up, so it is still
+       holding it — drop it, and ignore the tail of the room's reverb too. */
     heard = '';
+    swallowUntil = performance.now() + 1500;
     echoUntil = performance.now() + config.echoTailMs;
-    if (rec) { try { rec.start(); } catch { /* the onend restart will get it */ } }
   }
 
   window.addEventListener('pagehide', () => { window.clearInterval(timer); stop(); });
