@@ -5,3 +5,7 @@ dist/
 
 # Throwaway probe scripts used while debugging renders.
 *.tmp.mjs
+
+# Screenshots from scripts/ui-tour.mjs and scripts/screenshot.mjs.
+.tour/
+shot.png

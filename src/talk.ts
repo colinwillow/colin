@@ -38,6 +38,10 @@ export interface TalkOptions {
   colin: Character;
   wander: Wander;
   camera: THREE.Camera;
+  /** Whether the scene he is standing in has a floor to walk on. Asked when a
+   *  conversation ends, rather than assuming the answer is yes: a studio
+   *  backdrop is one room he must not stroll out of. */
+  canWander?: () => boolean;
 }
 
 export interface Conversation {
@@ -62,6 +66,7 @@ const ATTEND_DEG = 90;
 
 export function createConversation(opts: TalkOptions): Conversation {
   const { endpoint, persona, face, alive, colin, wander, camera } = opts;
+  const canWander = opts.canWander ?? (() => true);
 
   const brain = createBrain(endpoint, persona);
   const voice = createVoice(endpoint, persona);
@@ -108,7 +113,9 @@ export function createConversation(opts: TalkOptions): Conversation {
     if (engaged === yes) return;
     engaged = yes;
     if (yes) { wander.halt(); wander.config.enabled = false; }
-    else wander.config.enabled = true;
+    // Not `true`: the scene is what decides whether he walks, and finishing a
+    // sentence in a studio must not set him off across a backdrop.
+    else wander.config.enabled = canWander();
     /* Eyes on you for as long as this lasts. He turns to face the camera while
        engaged, so straight ahead IS at you — and meeting someone's eye is most
        of what separates being answered from being talked near. */

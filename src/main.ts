@@ -15,6 +15,12 @@ import { loadCharacter, createCharacterLights, type Character, type CharacterLig
 import { pickQuality, QUALITY } from './quality';
 import { createRoomLights, DEFAULT_ROOM_LIGHTS, type RoomLights } from './roomLights';
 import { createConversation, type Conversation } from './talk';
+import { createShotDirector } from './shot';
+import { createStage, type Stage } from './stage';
+import { createPoses } from './poses';
+import { createWardrobe } from './wardrobe';
+import { createCamera } from './photos';
+import { createInterface } from './ui';
 
 /** On the rug in front of the stove, where the HDR probe was rendered. */
 export const CHARACTER_SPOT = new THREE.Vector3(-0.3, 0, 1.7);
@@ -68,6 +74,29 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
+
+/**
+ * The shutter.
+ *
+ * Made here rather than inside the interface because the render loop is what
+ * has to call it: a WebGL drawing buffer is only readable in the tick that drew
+ * it, so the capture happens at the bottom of the frame or not at all.
+ */
+const photos = createCamera(renderer.domElement);
+
+/** The interface's per-frame tick — a no-op until there is an interface. */
+let uiUpdate: (dt: number) => void = () => {};
+
+/**
+ * The lil-gui panel is a developer tool now that there are real controls for the
+ * things it used to be the only way to reach. Off unless it is asked for by
+ * name, from More → Tuning panel or `?tune` in the URL.
+ */
+const setTuning = (on = !document.body.classList.contains('tuning')) => {
+  document.body.classList.toggle('tuning', on);
+  return on;
+};
+if (new URLSearchParams(location.search).has('tune')) setTuning(true);
 
 try {
   const kitchen = await loadKitchen(renderer, scene, {
@@ -166,8 +195,15 @@ try {
   // He talks with or without a face: silent lips are a worse conversation, not an
   // impossible one, and there is no reason to take the voice away while the
   // shapes are being sculpted.
+  /* Assigned below, once the shot director it needs exists. Everything that
+     asks "is he allowed to walk here" goes through this, so the answer is
+     whatever room he is standing in right now rather than whatever it was when
+     the question was first wired up. */
+  let stage: Stage | undefined;
+  const canWander = () => stage?.current.wander ?? true;
+
   const talk: Conversation = createConversation(
-    { endpoint: BRAIN, persona: PERSONA, face, alive, colin, wander, camera },
+    { endpoint: BRAIN, persona: PERSONA, face, alive, colin, wander, camera, canWander },
   );
   if (talk.mouth) {
     console.log(`visemes — ${talk.mouth.rig} rig, ${talk.mouth.matched.length} shapes matched`
@@ -218,7 +254,11 @@ try {
     alive.update(dt, face);
     held();
     face.commit();
-    rig.update(dt);
+    /* The director and the rig both want the camera and only one can have it:
+       the rig is an operator following him around a room, the director puts him
+       on a mark. Whichever is not in charge does nothing at all. */
+    if (!shots.update(dt)) rig.update(dt);
+    uiUpdate(dt);
     renderer.clear();
 
     renderer.toneMapping = THREE.AgXToneMapping;
@@ -228,9 +268,37 @@ try {
     renderer.toneMapping = look.toneMapping;
     renderer.toneMappingExposure = look.exposure;
     renderer.render(characterScene, camera);   // Colin, lit by his own rig
+
+    // The one moment the drawing buffer still holds the frame — see photos.ts.
+    photos.afterRender();
   });
 
   buildTuningPanel(kitchen.manifest.exposure, lightmapped, colin, lights, look, roomExposure, kitchen, resize, wander, rig, face, alive, talk, roomLights);
+
+  /* The app around the render: which room he is in, what he is wearing, what he
+     is doing, and the screens that change each of those. Everything below
+     reaches the scene through the object passed to `createInterface` — nothing
+     in the scene knows the interface exists, which is what keeps the render loop
+     above readable. */
+  const shots = createShotDirector(camera, kitchen.framing, resize);
+  /* His hips rather than his root, so a pose that lunges a metre toward the lens
+     backs the camera off instead of turning into a close-up of his forehead —
+     and his root for the floor, because the hips are the one part of him that
+     moves vertically on every single clip. */
+  shots.aim(colin.model.getObjectByName('mixamorig_Hips') ?? colin.root, colin.root);
+  shots.enableDrag(renderer.domElement);
+  stage = createStage({
+    renderer, scene, characterScene, room: kitchen.room, roomEnvMap: kitchen.envMap,
+    colin, lights, look, wander, shots,
+  });
+  const ui = createInterface({
+    colin, face, alive, wander, talk, stage, shots,
+    poses: createPoses(colin, wander, canWander),
+    wardrobe: createWardrobe(colin.model),
+    camera: photos,
+    tuning: setTuning,
+  });
+  uiUpdate = ui.update;
 
   // Debug handles. From the devtools console: kitchen.interactive.Fridge_Door,
   // kitchen.lightmapped[0].lightMapIntensity, new THREE.Raycaster(), ...

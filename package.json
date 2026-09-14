@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "screenshot": "node scripts/screenshot.mjs",
-    "talk-check": "node scripts/talk-check.mjs"
+    "talk-check": "node scripts/talk-check.mjs",
+    "mic-check": "node scripts/mic-check.mjs",
+    "ui-tour": "node scripts/ui-tour.mjs"
   },
   "dependencies": {
     "three": "^0.185.0"

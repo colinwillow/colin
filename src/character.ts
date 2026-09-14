@@ -38,6 +38,15 @@ export interface Character {
    */
   weightOf: (name: string) => number;
   update: (deltaSeconds: number) => void;
+  /** Which clip was last played. */
+  readonly playing: string | null;
+  /** How far into a clip its action currently is, in seconds, and how long the
+   *  clip runs. This is what lets a pose be a place in an animation rather than
+   *  a separate asset — freeze the clock and the pose is whatever frame it
+   *  stopped on. */
+  timeOf: (name: string) => { time: number; duration: number } | null;
+  /** Jump a clip's clock. Pairs with `setTimeScale(name, 0)` to hold a frame. */
+  seek: (name: string, seconds: number) => void;
   /** What he actually measured before being fitted, in metres. */
   measuredHeight: number;
   /** Re-fit him to a new height, keeping his feet on the floor. */
@@ -226,12 +235,29 @@ export async function loadCharacter(
     if (action) action.timeScale = scale;
   };
 
+  const timeOf = (name: string) => {
+    const action = actions.get(name);
+    return action ? { time: action.time, duration: action.getClip().duration } : null;
+  };
+
+  const seek = (name: string, seconds: number) => {
+    const action = actions.get(name);
+    if (!action) return;
+    action.time = THREE.MathUtils.clamp(seconds, 0, action.getClip().duration);
+    /* The mixer only writes the skeleton when it ticks, so a seek on a frozen
+       clip shows nothing until something moves. A zero-length update is enough
+       to make it take. */
+    mixer.update(0);
+  };
+
   const clips = gltf.animations.map((c) => c.name);
   const first = clips.find((n) => n === idle) ?? clips.find((n) => n.startsWith('idle')) ?? clips[0];
   if (first) play(first, 0);
 
   return {
     root, model, mixer, clips, play, setTimeScale, weightOf, measuredHeight, materials,
+    timeOf, seek,
+    get playing() { return current ? current.getClip().name : null; },
     setShadowStrength: shadow.setStrength,
     setHeight: fitTo,
     update: (dt) => mixer.update(dt),

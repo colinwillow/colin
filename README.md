@@ -22,9 +22,18 @@ Open the panel in the top-right corner to tune the lighting knobs live.
 **Milestone 1 — the room renders, and Colin is standing in it.** The baked
 kitchen loads from the wide reference camera with mouse sway, matching the
 Blender framing, and the rigged character stands on the rug in front of the
-stove playing an idle, lit by the same probe. Nothing is interactive yet.
+stove playing an idle, lit by the same probe.
 
-Still to do: interactions, then the face and voice.
+**Milestone 2 — he hears you and answers.** Push to talk, a greeting, a streamed
+reply from the Worker, his own voice, and a mouth timed to it. See *Talking to
+him*.
+
+**Milestone 3 — there is an app around him.** Outfits, poses, moods, emotes,
+backdrops, a camera and a gallery, with him live on screen behind all of it. See
+*The app around him*.
+
+Still to do: more wearables and more rooms, both of which are Blender exports
+rather than code.
 
 ## Layout
 
@@ -43,6 +52,18 @@ src/brain.ts                    the Worker chat call, streamed
 src/voice.ts                    the ElevenLabs clone: chunking, scheduling, the audio graph
 src/visemes.ts                  text and character timings -> mouth shapes -> morph targets
 src/roomLights.ts               the experiment: real lights with the bake switched off
+src/stage.ts                    which room he is in: the baked kitchen, or a studio sweep
+src/shot.ts                     framing him on a mark instead of following him around
+src/poses.ts                    a pose is a frozen frame of a clip; saving and restoring them
+src/wardrobe.ts                 what he is wearing, discovered from the export's mesh names
+src/photos.ts                   the shutter, and the pictures it keeps in IndexedDB
+src/ui/                         the app around the render — see "The app around him"
+  index.ts                      mounts it; the one import main.ts makes
+  shell.ts                      screens, regions, routing, the tab bar
+  context.ts                    everything a screen is allowed to touch
+  dom.ts                        el(), icon(), button() — the whole view layer
+  ui.css                        the look: one scale, one radius, one shadow
+  screens/                      home, outfits, poses, mood, emotes, rooms, camera, gallery, more
 VISEMES.md                      what the face has, and who is allowed to move it
 public/kitchen/                 the baked assets, served verbatim
   kitchen_room_02.glb           the room: 82 meshes, Draco + WebP
@@ -56,6 +77,8 @@ public/character/
   colin.glb                     the whole character: body, face, eyes, teeth, clips
 scripts/screenshot.mjs          optional headless render check (see below)
 scripts/talk-check.mjs          exercises the talking pipeline with the Worker stubbed
+scripts/mic-check.mjs           the push-to-talk path: greeting first, one recogniser start
+scripts/ui-tour.mjs             a PNG of every screen at phone size, and no errors on the way
 ```
 
 About 14 MB of assets. Every file is well under GitHub's limits, so Git LFS is
@@ -720,6 +743,7 @@ the timeline, and whether the mouth on the real head moves.
 npm i -D playwright && npx playwright install chromium   # not a project dependency
 npm run build && npx vite preview --port 4173 &
 npm run talk-check -- http://127.0.0.1:4173/
+npm run mic-check -- http://127.0.0.1:4173/    # the push-to-talk path
 ```
 
 It stops the render loop before it samples: software WebGL draws about one frame
@@ -763,6 +787,112 @@ enabling them turns on the renderer's shadow map and marks all 82 room meshes as
 casters and receivers, and the flag is dropped again when the experiment is off
 so the character pass never pays for it.
 
+## The app around him
+
+He is the page. Everything else is arranged around him — a header, the space
+either side, a tray underneath, a tab bar — so choosing a jacket happens while
+looking at the jacket. Only the three screens that are genuinely not about him
+take the whole display: the gallery, the camera roll's viewer, and settings.
+
+```
+Home      him, and six ways in
+Outfits   slots down the right, what is in the slot along the bottom
+Poses     every clip, grouped; Hold freezes a frame, Save keeps it
+Mood      what he is like, which picks his idle and sets his face
+Emotes    one thing, once: a wave, a raised brow
+Rooms     the kitchen, or a studio sweep in five colours
+Camera    a viewfinder with four framings and a shutter
+Gallery   what the shutter kept, with share and delete
+More      captions, resets, the tuning panel, what he is made of
+```
+
+**Talking is the middle of the tab bar**, not a screen. It is the point of the
+app, and the point of the app should not be three taps away.
+
+### Nothing here is a fixed list
+
+Every screen reads the model rather than a table that has to be kept in step
+with it.
+
+- **Outfits** walks the export for meshes that are not his body. The slot comes
+  from the mesh's own name — `top_flannel`, `shoes_vans`, `hat_beanie` — so a new
+  wearable is an export away from appearing, with nothing to edit here. Names
+  that predate the rule (`converse`, `outfit`, `headphones`) are mapped by hand
+  in `src/wardrobe.ts`. A slot nothing landed in is still shown, with the name to
+  give the mesh that would fill it.
+- **Poses** are frames, not assets. Pick a clip, stop its clock, and the frame it
+  stopped on is a pose — which means every animation exported from Cinema 4D
+  arrives carrying a few hundred of them. Saved poses are `{ clip, time }` in
+  `localStorage`, and one whose clip has left the export quietly stops existing.
+- **Moods** are the six in `src/mood.ts`, and picking one re-picks his idle
+  immediately rather than waiting for the current one to finish.
+
+### The backdrop is also the light
+
+A studio is not the kitchen with the walls hidden. The sweep behind him is
+generated as a one-pixel-wide vertical gradient, used as the backdrop *and*
+pre-filtered into the environment map — so the colour on the wall is the colour
+falling on his face, which is the entire reason a white cyc and a black one look
+nothing alike. Exposure, emission, the three character lights and the contact
+shadow all move with it; the numbers are one table in `src/stage.ts`.
+
+**The sweep is a sphere, not `scene.background`.** A scene background goes
+through the tone curve, and the room's curve is AgX at 0.55 exposure — which
+turned a white cyc into mid grey and a slate one into black, because compressing
+highlights is exactly what that curve is for. A mesh can opt out with
+`toneMapped: false`.
+
+### Framing is solved, not dialled in
+
+`src/shot.ts` takes the camera off the rig and puts it on a mark. A shot says how
+many metres of world it wants to see top to bottom; the distance follows from the
+lens and the viewport:
+
+```
+d = coverM / (2 · tan(fov / 2))
+```
+
+which is what makes one set of numbers frame him the same on a phone in portrait
+and on a laptop. Two things feed into it that are worth knowing about:
+
+- **He is framed from his hips, not his root.** A clip that lunges toward the
+  camera moves his hips a metre and leaves the root where it was, and a camera
+  locked to the root turns that into a close-up of his forehead. The anchor is
+  damped over about 0.7 s, so it follows where he has got to rather than what he
+  is doing.
+- **He is framed inside what the interface is not covering.** The tray on Poses
+  is three rows deep and the one on Home is nothing at all, so the shell measures
+  its own chrome after every layout and hands the camera two fractions. The
+  camera opens up by that much and tilts down by half the difference, and he
+  lands in the middle of what you can actually see. No margins per screen.
+
+Drag anywhere on the render to turn around him; the wheel pushes in.
+
+### Photos
+
+The picture is the canvas, and every control is a DOM overlay the drawing buffer
+has never heard of — so there is no chrome to hide before a shot, and what you
+see is what is saved. The capture is a flag rather than a call: a WebGL drawing
+buffer is only readable in the tick that drew it, so the render loop reads the
+pixels at the bottom of the frame. Asking for `preserveDrawingBuffer` instead
+would cost a full-screen copy on every frame for the sake of one button.
+
+They go in IndexedDB, full size and thumbnail, because a phone screenshot is a
+megabyte or two and `localStorage` gives you five in total — as strings, which
+costs another third on top. **Save** goes through the share sheet, which is the
+only route to the camera roll on iOS; everywhere else it downloads.
+
+### Looking at it without a screen
+
+`scripts/ui-tour.mjs` walks every screen at phone size and writes a PNG of each,
+failing if anything throws on the way in or out.
+
+```bash
+npm i -D playwright                                      # not a project dependency
+npm run build && npx vite preview --port 4173 &
+npm run ui-tour -- http://127.0.0.1:4173/ .tour
+```
+
 ## Interactive objects
 
 These are separate meshes, and each pivot is placed where the object naturally
@@ -783,8 +913,12 @@ such as a pot carried across the room, set its `lightMap` to null and raise its
 
 ## Tuning knobs
 
-All five are live in the top-right panel; "log settings to console" prints the
-current values so they can be written back into the code or the manifest.
+**The panel is off by default.** It was the only way to reach any of this when it
+was the only interface there was; now that there are real controls it is a
+developer tool, so it lives behind *More → Tuning panel*, or `?tune` in the URL.
+
+All five are live in that panel; "log settings to console" prints the current
+values so they can be written back into the code or the manifest.
 
 - **Overall brightness:** `exposure` in `kitchen_lightmaps.json` (0.55). The bake
   came out a bit brighter than Colin's Blender Eevee render, so expect to lower it

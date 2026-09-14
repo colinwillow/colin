@@ -1,0 +1,736 @@
+/* The app around the render.
+ *
+ * Light chrome over a live 3D view, which is a harder thing to make readable
+ * than it looks: the background behind any given button is whatever he happens
+ * to be standing in front of, and it moves. So nothing here is a flat panel over
+ * the scene — every surface is frosted and slightly translucent, so it reads as
+ * glass sitting on top of the room rather than a sheet of paper covering it, and
+ * every one of them carries a hairline border so its edge survives against both
+ * a white studio and a dark kitchen.
+ *
+ * One scale, one radius family, one shadow. Anything that looks like a control
+ * shares them.
+ */
+
+#ui {
+  position: fixed;
+  inset: 0;
+  z-index: 6;
+  /* The canvas below has to keep the drags: this layer is a frame around it, and
+     only the things you can actually press opt back in. */
+  pointer-events: none;
+  color: var(--ink);
+  font: 400 15px/1.4 -apple-system, BlinkMacSystemFont, ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  transition: opacity 0.6s ease 0.3s;
+}
+body.ready #ui { opacity: 1; }
+
+/* The button reset, at zero specificity.
+ *
+ * `:where()` is the whole point of these two rules, and THE `#ui` HAS TO BE
+ * INSIDE IT. `:where()` only zeroes what it wraps, so `#ui :where(button)` still
+ * scores an id — which beats `.glass`, `.tile`, `.action` and every other class
+ * below, wipes out the background each of them sets, and renders the whole
+ * interface as invisible buttons floating over the room. Wrapping the lot makes
+ * it a true default that any class overrides, which is what a reset is for. */
+:where(#ui button, #ui a) { font: inherit; color: inherit; }
+:where(#ui button) {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+  border: 0;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+:root {
+  --ink: #16130f;
+  --ink-soft: #6d675f;
+  --ink-faint: #a29a90;
+  /* Nearly opaque, and that is the readability budget rather than a taste
+     call: these sit over a scene that can be a white sweep or a black one, and
+     anything much more transparent turns dark text on a dark backdrop into
+     nothing at all. The blur is the effect; the alpha is the contrast. */
+  --surface: rgba(252, 251, 249, 0.93);
+  --surface-solid: #f4f2ee;
+  --edge: rgba(22, 19, 15, 0.09);
+  --edge-strong: rgba(22, 19, 15, 0.16);
+  --accent: #16130f;
+  --selected: #e8f0ff;
+  --selected-edge: #2f6bff;
+  --shadow: 0 10px 30px rgba(20, 16, 12, 0.18), 0 2px 6px rgba(20, 16, 12, 0.08);
+  --radius: 20px;
+  --gutter: 16px;
+  --top: calc(env(safe-area-inset-top) + 12px);
+  --bottom: calc(env(safe-area-inset-bottom) + 10px);
+}
+
+/* Frosted glass, and the fallback for a browser without it. Order matters: the
+   solid colour has to come first so `backdrop-filter` can overwrite it. */
+.glass {
+  background: var(--surface-solid);
+  border: 1px solid var(--edge);
+  box-shadow: var(--shadow);
+}
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  .glass {
+    background: var(--surface);
+    -webkit-backdrop-filter: blur(22px) saturate(1.5);
+    backdrop-filter: blur(22px) saturate(1.5);
+  }
+}
+
+/* ---------------- the regions ---------------- */
+
+#ui > * { pointer-events: none; }
+#ui .row, #ui button, #ui .scroll, #ui .cover, #ui .card { pointer-events: auto; }
+
+#head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: var(--top) var(--gutter) 0;
+  min-height: 0;
+}
+#head:empty { display: none; }
+/* The only text in the interface with nothing behind it, so it carries its own
+   background: a soft light halo that is invisible over a pale room and is the
+   only reason it can be read over a dark one. */
+#head .title, #head .sub { text-shadow: 0 1px 12px rgba(250, 248, 244, 0.9), 0 0 3px rgba(250, 248, 244, 0.8); }
+#head .title {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+#head .sub { font-size: 12.5px; color: var(--ink-soft); margin-top: 1px; }
+#head .spring { flex: 1; }
+
+/* A round glass button: back, close, settings. */
+.chip {
+  pointer-events: auto;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  border-radius: 13px;
+  color: var(--ink);
+  transition: transform 0.12s ease;
+}
+.chip:active { transform: scale(0.92); }
+
+/* Two columns on Home, one rail on Outfits. `space-between` with a spacer in
+   front of a lone child is what puts either of them where it belongs. */
+#body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px var(--gutter);
+}
+#body .spring { flex: 1; }
+
+/* The vertical slot rail on the Outfits screen. */
+#rail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-self: center;
+}
+#rail:empty { display: none; }
+#rail button {
+  pointer-events: auto;
+  width: 66px;
+  padding: 9px 4px 7px;
+  border-radius: 17px;
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  font-size: 9.5px;
+  font-weight: 500;
+  color: var(--ink-soft);
+  letter-spacing: -0.015em;
+  transition: transform 0.12s ease;
+}
+#rail button span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#rail button:active { transform: scale(0.94); }
+#rail button.on { color: var(--selected-edge); border-color: var(--selected-edge); background: var(--selected); }
+
+/* The bottom tray: whatever the current screen puts under him. */
+#tray {
+  display: grid;
+  gap: 10px;
+  padding: 0 var(--gutter) 8px;
+}
+#tray:empty { display: none; }
+
+.scroll {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  padding: 2px;
+  margin: -2px;
+  scroll-snap-type: x proximity;
+  /* The page itself never scrolls; these do, and the browser needs telling that
+     a horizontal drag here is a scroll rather than a camera orbit. */
+  touch-action: pan-x;
+  overscroll-behavior-x: contain;
+}
+.scroll::-webkit-scrollbar { display: none; }
+
+/* A thing you can pick: an outfit, a pose, a backdrop. */
+.tile {
+  pointer-events: auto;
+  flex: 0 0 auto;
+  width: 74px;
+  border-radius: 18px;
+  padding: 8px 6px;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  scroll-snap-align: center;
+  transition: transform 0.12s ease;
+}
+.tile:active { transform: scale(0.94); }
+.tile .swatch {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  border: 1px solid var(--edge);
+  display: grid;
+  place-items: center;
+  color: var(--ink-soft);
+  background: linear-gradient(160deg, #ffffff, #e7e3dc);
+}
+.tile .label {
+  font-size: 10.5px;
+  font-weight: 500;
+  text-align: center;
+  line-height: 1.25;
+  color: var(--ink-soft);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tile.on { border-color: var(--selected-edge); background: var(--selected); }
+/* The little cross on a saved pose. Inside the tile, so it moves with it. */
+.tile .x {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: var(--accent);
+  color: #fbf9f6;
+  box-shadow: 0 2px 6px rgba(20, 16, 12, 0.3);
+}
+.tile { position: relative; }
+.tile.on .label { color: var(--selected-edge); font-weight: 600; }
+
+/* A word you can press, with nothing drawn around it. */
+.text {
+  pointer-events: auto;
+  color: var(--selected-edge);
+  font-weight: 500;
+}
+
+/* A wide pill: Save Pose, Done, anything that ends a screen. */
+.action {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 15px 20px;
+  border-radius: 17px;
+  background: var(--accent);
+  color: #fbf9f6;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  box-shadow: var(--shadow);
+  transition: transform 0.12s ease, opacity 0.15s ease;
+}
+.action:active { transform: scale(0.98); }
+.action.quiet {
+  background: var(--surface-solid);
+  color: var(--ink);
+  border: 1px solid var(--edge);
+  box-shadow: none;
+}
+.action[disabled] { opacity: 0.45; }
+
+.pills { display: flex; gap: 8px; }
+.pills > * { flex: 1; }
+
+/* Little segmented control — pose groups, camera modes. */
+.segments {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 14px;
+  align-self: center;
+}
+.segments button {
+  pointer-events: auto;
+  padding: 7px 13px;
+  border-radius: 11px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+.segments button.on { background: var(--accent); color: #fbf9f6; font-weight: 600; }
+
+/* ---------------- the tab bar ---------------- */
+
+#tabs {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-around;
+  gap: 4px;
+  padding: 8px 10px var(--bottom);
+  margin: 0;
+  border-radius: 0;
+  border-width: 1px 0 0;
+}
+#tabs.hide { display: none; }
+#tabs > button:not(#mic) {
+  pointer-events: auto;
+  flex: 1 1 0;
+  max-width: 96px;
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  padding: 5px 0 2px;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--ink-faint);
+  transition: color 0.15s ease;
+}
+#tabs > button:not(#mic).on { color: var(--ink); }
+
+/* Talking is the middle of the bar, and it is a pill rather than a circle
+   because the button says what it is doing — "listening", "his turn" — and a
+   circle that size cannot hold either word. */
+/* Two ids, deliberately: `#tabs > button` would otherwise out-specify a single
+   one and paint the microphone like a tab. */
+#ui #mic {
+  pointer-events: auto;
+  flex: 0 0 auto;
+  min-width: 104px;
+  padding: 13px 18px;
+  margin: 0 4px 2px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fbf9f6;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border: 0;
+  box-shadow: 0 6px 18px rgba(20, 16, 12, 0.25);
+  transition: transform 0.12s ease, background 0.2s ease, color 0.2s ease;
+}
+#ui #mic:active { transform: scale(0.96); }
+#ui #mic:disabled { opacity: 0.4; }
+#ui #mic.on { background: #2f6bff; color: #fff; }
+/* Armed but not listening this second — he is thinking, or talking back. */
+#ui #mic.on.busy {
+  background: var(--surface-solid);
+  color: var(--selected-edge);
+  box-shadow: inset 0 0 0 1.5px var(--selected-edge);
+}
+
+/* ---------------- captions and the level meter ---------------- */
+
+#talk {
+  position: static;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 0 var(--gutter) 6px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+body.ready #talk { opacity: 1; }
+#say {
+  pointer-events: auto;
+  max-width: 36ch;
+  text-align: center;
+  font-size: 14px;
+  line-height: 1.35;
+  color: var(--ink);
+  padding: 9px 14px;
+  border-radius: 15px;
+  background: var(--surface-solid);
+  border: 1px solid var(--edge);
+  box-shadow: var(--shadow);
+  text-shadow: none;
+  min-height: 0;
+  cursor: pointer;
+}
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  #say { background: var(--surface); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); }
+}
+#say:empty { display: none; }
+#say.off { display: none; }
+#say b { font-weight: 600; color: var(--selected-edge); }
+#captions {
+  pointer-events: auto;
+  display: none;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  color: var(--ink-soft);
+  background: var(--surface-solid);
+  border: 1px solid var(--edge);
+  box-shadow: var(--shadow);
+}
+#captions.on { display: grid; }
+#captions svg { width: 17px; height: 17px; }
+/* The level meter is a flat line when nothing is being said, and a flat line
+   under the captions reads as a rule somebody left in. It appears with the
+   microphone. */
+#wave { width: min(200px, 50vw); height: 18px; display: none; opacity: 0.75; }
+#ui:has(#mic.on) #wave { display: block; }
+
+/* ---------------- full-screen screens ---------------- */
+
+.cover {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-solid);
+  color: var(--ink);
+  animation: rise 0.26s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  .cover { background: rgba(244, 242, 238, 0.94); -webkit-backdrop-filter: blur(30px); backdrop-filter: blur(30px); }
+}
+/* The camera screen is the exception: it is a viewfinder, so it stays out of the
+   way and goes dark so the picture is the only bright thing. */
+.cover.viewfinder {
+  background: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  pointer-events: none;
+  color: #fff;
+}
+.cover.viewfinder > * { pointer-events: auto; }
+/* A camera's own controls are white, and white on a white cyclorama is nothing
+   at all — so the bottom of the viewfinder gets the scrim every camera app has,
+   under the controls and over the picture. */
+.cover.viewfinder::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 42%;
+  pointer-events: none;
+  background: linear-gradient(to top, rgba(10, 8, 6, 0.62), rgba(10, 8, 6, 0));
+}
+.cover.viewfinder > :is(.modes, .controls) { position: relative; z-index: 1; }
+@keyframes rise { from { opacity: 0; transform: translateY(14px); } }
+
+.cover > header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: var(--top) var(--gutter) 10px;
+}
+.cover > header .title { flex: 1; text-align: center; font-size: 17px; font-weight: 600; }
+.cover > header .chip { background: rgba(22, 19, 15, 0.05); border: 1px solid var(--edge); box-shadow: none; }
+.cover > header .text {
+  pointer-events: auto;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--selected-edge);
+  padding: 8px 4px;
+  min-width: 46px;
+}
+.cover .body {
+  pointer-events: auto;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding: 4px var(--gutter) calc(var(--bottom) + 12px);
+  touch-action: pan-y;
+}
+
+/* A row in a list screen: Rooms, More. */
+.card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  text-align: left;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  border-radius: var(--radius);
+  background: #fff;
+  border: 1px solid var(--edge);
+  transition: transform 0.12s ease;
+}
+.card:active { transform: scale(0.985); }
+.card .grow { flex: 1; min-width: 0; }
+.card .name { font-size: 15.5px; font-weight: 600; letter-spacing: -0.01em; }
+.card .note { font-size: 12.5px; color: var(--ink-soft); margin-top: 2px; }
+.card .preview {
+  width: 74px;
+  height: 54px;
+  border-radius: 14px;
+  flex: 0 0 auto;
+  border: 1px solid var(--edge);
+  background: #ddd;
+}
+.card .arrow { color: var(--ink-faint); flex: 0 0 auto; }
+.card.on { border-color: var(--selected-edge); box-shadow: inset 0 0 0 1px var(--selected-edge); }
+.card.on .name { color: var(--selected-edge); }
+
+.section {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  padding: 14px 4px 8px;
+}
+
+.empty {
+  padding: 26px 18px;
+  text-align: center;
+  color: var(--ink-soft);
+  font-size: 13.5px;
+  line-height: 1.5;
+  border: 1px dashed var(--edge-strong);
+  border-radius: var(--radius);
+}
+.empty code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  background: rgba(22, 19, 15, 0.06);
+  padding: 1px 5px;
+  border-radius: 5px;
+}
+
+/* ---------------- home ---------------- */
+
+#hub {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-self: center;
+}
+#hub.left { align-items: flex-start; }
+#hub button {
+  pointer-events: auto;
+  width: 64px;
+  height: 64px;
+  border-radius: 20px;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 4px;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--ink-soft);
+  transition: transform 0.14s ease;
+}
+#hub button:active { transform: scale(0.93); }
+#hub button svg { color: var(--ink); }
+
+#greeting {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  /* The only child of the header, so it has to carry the width itself or the
+     settings button sits against the name instead of out at the edge. */
+  flex: 1;
+  min-width: 0;
+}
+#greeting .avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  background: #d9d2c8 center/cover;
+  border: 1px solid var(--edge);
+  flex: 0 0 auto;
+}
+
+/* ---------------- gallery ---------------- */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.shot {
+  position: relative;
+  aspect-ratio: 3 / 4;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #e2ded7 center/cover;
+  border: 1px solid var(--edge);
+}
+.shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.shot .mark {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 1.5px solid #fff;
+  background: rgba(0, 0, 0, 0.25);
+  display: grid;
+  place-items: center;
+  color: #fff;
+}
+.shot.picked .mark { background: var(--selected-edge); border-color: #fff; }
+.shot.picked img { opacity: 0.72; }
+
+/* One photo, full bleed, with its own controls. */
+#viewer {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  background: rgba(12, 10, 8, 0.96);
+  display: flex;
+  flex-direction: column;
+  pointer-events: auto;
+  animation: rise 0.2s ease;
+}
+#viewer img { flex: 1; min-height: 0; object-fit: contain; width: 100%; }
+#viewer .bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 12px var(--gutter) var(--bottom);
+  color: #f2efe9;
+}
+#viewer .bar button { display: grid; justify-items: center; gap: 4px; font-size: 10.5px; color: inherit; }
+#viewer > header { color: #f2efe9; }
+#viewer > header .chip { background: rgba(255, 255, 255, 0.12); border-color: rgba(255, 255, 255, 0.18); color: #fff; }
+
+/* ---------------- the viewfinder ---------------- */
+
+#shutter {
+  width: 68px;
+  height: 68px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.35), 0 6px 20px rgba(0, 0, 0, 0.3);
+  transition: transform 0.1s ease;
+}
+#shutter:active { transform: scale(0.9); }
+#shutter[disabled] { opacity: 0.5; }
+.viewfinder .controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 14px var(--gutter) var(--bottom);
+}
+.viewfinder .last {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  border: 1.5px solid rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.1) center/cover;
+  flex: 0 0 auto;
+}
+.viewfinder .modes {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  padding-bottom: 6px;
+}
+.viewfinder .modes button {
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.65);
+}
+.viewfinder .modes button.on { color: #16130f; background: #fff; }
+.viewfinder > header .chip { background: rgba(0, 0, 0, 0.35); border-color: rgba(255, 255, 255, 0.2); color: #fff; }
+.viewfinder .spring { flex: 1; }
+.viewfinder .controls .chip { background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.2); color: #fff; }
+
+/* The frame flashing white, which is the only part of a shutter anyone misses
+   when it is not there. */
+#flash {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+#flash.go { animation: blink 0.32s ease-out; }
+@keyframes blink { 0% { opacity: 0.85; } 100% { opacity: 0; } }
+
+/* A line of text that says what just happened, then goes away. */
+#toast {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--bottom) + 86px);
+  transform: translateX(-50%) translateY(6px);
+  z-index: 7;
+  padding: 9px 15px;
+  border-radius: 13px;
+  background: rgba(22, 19, 15, 0.9);
+  color: #f7f4ef;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+#toast.on { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ---------------- wider than a phone ---------------- */
+
+/* Everything above is laid out for a phone, which is what this is for. On a
+   desktop the canvas is enormous and the controls should not stretch with it —
+   they stay phone-width and centre, so the shot keeps the room. */
+@media (min-width: 720px) {
+  #head, #body, #tray, #tabs, #talk { width: min(520px, 100%); margin-inline: auto; }
+  .cover > header, .cover .body { width: min(560px, 100%); margin-inline: auto; }
+  #tabs { border-radius: 22px 22px 0 0; border-width: 1px 1px 0; }
+}
+
+/* The tuning panel is a developer tool now that there are real controls, so it
+   is off unless it is asked for by name. */
+body:not(.tuning) .lil-gui.root { display: none; }
