@@ -9,6 +9,12 @@
 // the render is the page and the controls are arranged around it, so choosing a
 // jacket happens while looking at the jacket. Only the screens that are genuinely
 // not about him — the room list, the gallery, the settings — take the screen.
+//
+// AND THE DEFAULT IS ALMOST NOTHING. The app opens on `stage`, which is him in
+// his room with a microphone and one chip in the corner. Everything else is a
+// place you go on purpose. A tab bar along the bottom of the first thing you see
+// makes it an app with a character in it; this way round it is a character, with
+// an app folded up behind him.
 import type { ShotName } from '../shot';
 import { el, fill, icon, button } from './dom';
 import type { UiContext } from './context';
@@ -23,8 +29,14 @@ export interface Screen {
   tray?: () => Node | null;
   /** Instead of all of the above. */
   cover?: () => HTMLElement;
-  /** Default true. The camera screen and the gallery hide it. */
-  tabs?: boolean;
+  /**
+   * What sits along the bottom.
+   *
+   *   app    the tab row on its glass panel — the workshop screens
+   *   bare   the microphone and one chip, floating, nothing behind them
+   *   none   nothing at all — the screens that take the whole display
+   */
+  chrome?: 'app' | 'bare' | 'none';
   /** How to frame him here. `undefined` leaves the framing alone, which is what
    *  a screen that is not about looking at him should do. */
   shot?: ShotName | null;
@@ -91,7 +103,17 @@ export function createShell(
   };
   const ctx = { ...context, shell } as UiContext;
 
-  function buildTabs() {
+  function buildTabs(mode: 'app' | 'bare') {
+    if (mode === 'bare') {
+      /* Two things, held apart: the way back into the app on the left, the
+         microphone in the middle where a thumb already is. Nothing is drawn
+         behind them — on this screen the room is the background. */
+      fill(tabs,
+        button('chip.glass', () => go('home'), icon('grid', 19)),
+        ...(mic ? [mic] : []),
+        el('div.chip', { style: 'visibility:hidden' }));
+      return;
+    }
     const nodes: Node[] = [];
     for (const tab of TABS) {
       const node = button(`${route === tab.id ? 'on' : ''}`, () => go(tab.id),
@@ -119,10 +141,11 @@ export function createShell(
       fill(body, ...(current.body?.() ?? []));
       fill(tray, current.tray?.() ?? null);
     }
-    const showTabs = current.tabs !== false;
-    tabs.classList.toggle('hide', !showTabs);
-    if (talk) talk.style.display = showTabs ? '' : 'none';
-    buildTabs();
+    const chrome = current.chrome ?? 'app';
+    tabs.classList.toggle('hide', chrome === 'none');
+    tabs.classList.toggle('bare', chrome === 'bare');
+    if (talk) talk.style.display = chrome === 'none' ? 'none' : '';
+    if (chrome !== 'none') buildTabs(chrome);
     measure();
   }
 
@@ -189,6 +212,47 @@ export function createShell(
     render();
   }
 
+  /**
+   * The front door.
+   *
+   * Not a splash screen — a gesture collector with a face on it. Audio cannot
+   * start without a tap, the microphone cannot open without a tap, and the
+   * speech recogniser cannot start without a tap, so there has to BE a tap; the
+   * only choice is whether it is a button labelled "talk" tucked in a corner or
+   * the first thing you see. Making it the first thing you see is what turns
+   * "open the app, find the control, press it" into "open the app and he says
+   * hello", which is the entire feeling being aimed at.
+   *
+   * It shows every time. That is not a missing "remember me": the browser will
+   * not carry an audio grant across a page load, so there is nothing to
+   * remember — and a person who wanted to be talked to is not annoyed by being
+   * asked whether they want to be talked to.
+   */
+  function buildIntro() {
+    const canTalk = !!mic && !(mic as HTMLButtonElement).disabled;
+    const intro = el('div#intro');
+    const dismiss = () => {
+      intro.classList.add('gone');
+      // Removed rather than hidden: it covers the whole screen, and a covering
+      // element that is merely transparent still eats every tap behind it.
+      setTimeout(() => intro.remove(), 600);
+    };
+
+    intro.append(
+      el('div.mark', { style: `background-image: url(${import.meta.env.BASE_URL}icons/apple-touch-icon.png)` }),
+      el('h1', {}, 'Colin'),
+      el('p', {}, canTalk
+        ? 'He is in the kitchen. He does not know who you are.'
+        : 'This browser has no speech recognition, so he cannot hear you — but he is still in there.'),
+      canTalk
+        ? button('action', () => { (mic as HTMLButtonElement).click(); dismiss(); },
+          icon('mic', 19), 'Say hello')
+        : button('action', dismiss, 'Have a look'),
+    );
+    if (canTalk) intro.appendChild(button('text', dismiss, 'Just look around'));
+    root.appendChild(intro);
+  }
+
   let toastTimer = 0;
   function toast(message: string) {
     toastNode.textContent = message;
@@ -208,6 +272,9 @@ export function createShell(
 
   window.addEventListener('resize', measure);
 
-  go('home');
+  /* Him first. The hub is one chip away and nothing is lost by starting behind
+     it; starting IN it would make the app the thing and him the content. */
+  go('stage');
+  buildIntro();
   return shell;
 }

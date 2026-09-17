@@ -82,7 +82,12 @@ await page.evaluate(() => window.talk.voice.arm());
 const mic = await page.$('#mic');
 console.log('mic enabled:', await mic.isEnabled(), '| label:', (await mic.textContent()));
 
-await mic.click();
+/* The front door is what presses it now. The intro covers the screen until it
+   is answered, which is the whole point of it — every grant the app needs comes
+   out of that one tap — so the first press is made there rather than reaching
+   past it to the button underneath. */
+await page.locator('#intro button.action').click();
+await page.waitForTimeout(400);
 await page.waitForFunction(() => (window.__spoke || []).length > 0, null, { timeout: 10000 });
 const atGreeting = await page.evaluate(() => ({
   spoke: window.__spoke[0], starts: window.__starts, earsOpen: window.talk.ears.listening,

@@ -17,6 +17,7 @@ import { createRoomLights, DEFAULT_ROOM_LIGHTS, type RoomLights } from './roomLi
 import { createConversation, type Conversation } from './talk';
 import { createShotDirector } from './shot';
 import { createStage, type Stage } from './stage';
+import { createToon, type Toon } from './toon';
 import { createPoses } from './poses';
 import { createWardrobe } from './wardrobe';
 import { createCamera } from './photos';
@@ -258,6 +259,7 @@ try {
        the rig is an operator following him around a room, the director puts him
        on a mark. Whichever is not in charge does nothing at all. */
     if (!shots.update(dt)) rig.update(dt);
+    toon.update();
     uiUpdate(dt);
     renderer.clear();
 
@@ -273,7 +275,12 @@ try {
     photos.afterRender();
   });
 
-  buildTuningPanel(kitchen.manifest.exposure, lightmapped, colin, lights, look, roomExposure, kitchen, resize, wander, rig, face, alive, talk, roomLights);
+  /* The other way he could look. Installed always and driven by a uniform, so
+     the switch is an assignment rather than four hundred recompiled programs —
+     see toon.ts. At `amount: 0` it is exactly the shipped render. */
+  const toon = createToon(colin);
+
+  buildTuningPanel(kitchen.manifest.exposure, lightmapped, colin, lights, look, roomExposure, kitchen, resize, wander, rig, face, alive, talk, roomLights, toon);
 
   /* The app around the render: which room he is in, what he is wearing, what he
      is doing, and the screens that change each of those. Everything below
@@ -292,7 +299,7 @@ try {
     colin, lights, look, wander, shots,
   });
   const ui = createInterface({
-    colin, face, alive, wander, talk, stage, shots,
+    colin, face, alive, wander, talk, stage, shots, toon,
     poses: createPoses(colin, wander, canWander),
     wardrobe: createWardrobe(colin.model),
     camera: photos,
@@ -302,7 +309,7 @@ try {
 
   // Debug handles. From the devtools console: kitchen.interactive.Fridge_Door,
   // kitchen.lightmapped[0].lightMapIntensity, new THREE.Raycaster(), ...
-  Object.assign(window, { renderer, kitchen, colin, wander, rig, face, alive, talk, roomLights, THREE });
+  Object.assign(window, { renderer, kitchen, colin, wander, rig, face, alive, talk, roomLights, THREE, stage, shots, toon, ui });
 
   loading.classList.add('done');
   document.body.classList.add('ready');
@@ -355,6 +362,7 @@ function buildTuningPanel(
   alive: Alive,
   talk: Conversation,
   roomLights: RoomLights,
+  toon: Toon,
 ) {
   const state = {
     exposure,
@@ -365,6 +373,24 @@ function buildTuningPanel(
   };
 
   const gui = new GUI({ title: 'Kitchen' });
+
+  /* The look experiment, with every number in it live. It is here rather than in
+     the app's own screens because comparing two renders is a thing you do with
+     sliders, once, not a setting anybody ships. More -> Toon shading is the
+     on/off for everyone else. */
+  const toonFolder = gui.addFolder('Toon').close();
+  const retoon = () => toon.apply();
+  toonFolder.add(toon.config, 'amount', 0, 1, 0.01).name('amount (0 = as shipped)').onChange(retoon);
+  toonFolder.add(toon.config, 'bands', 1, 6, 1).name('bands').onChange(retoon);
+  toonFolder.add(toon.config, 'soft', 0.001, 0.3, 0.001).name('step softness').onChange(retoon);
+  toonFolder.add(toon.config, 'floor', 0, 0.9, 0.01).name('shadow floor').onChange(retoon);
+  toonFolder.add(toon.config, 'glow', 0, 0.6, 0.01).name('texture glow').onChange(retoon);
+  toonFolder.add(toon.config, 'emissiveMax', 0, 1, 0.01).name('emission ceiling').onChange(retoon);
+  toonFolder.add(toon.config, 'rim', 0, 1.2, 0.01).name('rim light').onChange(retoon);
+  toonFolder.add(toon.config, 'rimPower', 0.5, 8, 0.1).name('rim tightness').onChange(retoon);
+  toonFolder.addColor(toon.config, 'rimColor').name('rim colour').onChange(retoon);
+  toonFolder.add(toon.config, 'outline', 0, 8, 0.1).name('outline px').onChange(retoon);
+  toonFolder.addColor(toon.config, 'outlineColor').name('outline colour').onChange(retoon);
   gui.add(state, 'exposure', 0.1, 1.5, 0.01)
     .name('exposure')
     .onChange((v: number) => { roomExposure.value = v; });

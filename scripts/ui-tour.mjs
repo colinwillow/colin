@@ -22,13 +22,17 @@ mkdirSync(out, { recursive: true });
 const browser = await chromium.launch({
   executablePath: CHROME,
   args: ['--enable-unsafe-swiftshader', '--use-gl=angle', '--use-angle=swiftshader',
-    '--autoplay-policy=no-user-gesture-required', '--mute-audio'],
+    '--autoplay-policy=no-user-gesture-required', '--mute-audio',
+    // A microphone that is always there and always making a noise, so the meter
+    // can be photographed reading real audio rather than its fallback.
+    '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'],
 });
 const page = await browser.newPage({
   viewport: { width: 390, height: 844 },
   isMobile: true,
   hasTouch: true,
   deviceScaleFactor: 2,
+  permissions: ['microphone'],
 });
 
 const errors = [];
@@ -59,7 +63,10 @@ const shot = async (name) => {
 };
 
 const steps = [
-  ['home', async () => {}],
+  // The front door, and then him with nothing on top of him.
+  ['intro', async () => {}],
+  ['stage', async () => tap('Say hello')],
+  ['home', async () => tap('#tabs .chip')],
   ['outfits', async () => tap('Outfits')],
   ['poses', async () => { await tap('.chip'); await tap('Poses'); }],
   ['poses-dancing', async () => tap('Dancing')],
@@ -74,6 +81,22 @@ const steps = [
   ['gallery', async () => { await tap('#shutter'); await tap('.last'); }],
   // Out of the gallery, out of the camera, and only then is the tab bar back.
   ['more', async () => { await tap('.chip'); await tap('.chip'); await tap('More'); }],
+  ['toon-on', async () => tap('Toon shading')],
+  /* The comparison the whole experiment is for. Routed through the shell rather
+     than by tapping, because by this point the back trail is four screens deep
+     and which chip goes where stops being the thing under test. */
+  ['toon-studio', async () => {
+    await page.evaluate(() => { window.stage.go('white'); window.ui.go('rooms'); });
+    await page.waitForTimeout(3000);
+  }],
+  ['toon-portrait', async () => {
+    await page.evaluate(() => window.ui.go('emotes'));
+    await page.waitForTimeout(3000);
+  }],
+  ['plain-studio', async () => {
+    await page.evaluate(() => { window.toon.config.amount = 0; window.toon.apply(); window.ui.go('rooms'); });
+    await page.waitForTimeout(3000);
+  }],
 ];
 
 for (const [name, run] of steps) {

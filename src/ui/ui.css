@@ -314,6 +314,20 @@ body.ready #ui { opacity: 1; }
   border-width: 1px 0 0;
 }
 #tabs.hide { display: none; }
+
+/* The bare dock, for the screen that is just him: the same row, with the panel
+   taken out from under it. Nothing is drawn behind these — the room is the
+   background, which is the entire point of that screen. */
+#tabs.bare {
+  background: none;
+  border: 0;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  justify-content: space-between;
+  align-items: center;
+  padding-inline: var(--gutter);
+}
 #tabs > button:not(#mic) {
   pointer-events: auto;
   flex: 1 1 0;
@@ -413,8 +427,64 @@ body.ready #talk { opacity: 1; }
 /* The level meter is a flat line when nothing is being said, and a flat line
    under the captions reads as a rule somebody left in. It appears with the
    microphone. */
-#wave { width: min(200px, 50vw); height: 18px; display: none; opacity: 0.75; }
+/* Bigger than it was, because it is now worth looking at: both halves are real
+   audio, and a 34-bar spectrum needs room to be a spectrum. */
+#wave { width: min(268px, 66vw); height: 34px; display: none; }
 #ui:has(#mic.on) #wave { display: block; }
+
+/* ---------------- the front door ---------------- */
+
+/* Not a splash screen — a gesture collector. Audio, the microphone and the
+   recogniser all need a tap before they will start, so there has to be one; this
+   makes that tap the thing you came for rather than a control to go and find. */
+#intro {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  pointer-events: auto;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 14px;
+  padding: 0 34px calc(var(--bottom) + 30px);
+  text-align: center;
+  background: rgba(14, 12, 10, 0.72);
+  -webkit-backdrop-filter: blur(16px) saturate(0.85);
+  backdrop-filter: blur(16px) saturate(0.85);
+  color: #f6f2ec;
+  transition: opacity 0.5s ease;
+  animation: fadein 0.6s ease;
+}
+#intro.gone { opacity: 0; pointer-events: none; }
+@keyframes fadein { from { opacity: 0; } }
+#intro .mark {
+  width: 96px;
+  height: 96px;
+  border-radius: 30px;
+  background: #1b1714 center/cover;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
+  /* A slow breath, so the first thing you see is not a still image. */
+  animation: breathe 5.5s ease-in-out infinite;
+}
+@keyframes breathe {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-5px) scale(1.015); }
+}
+#intro h1 {
+  margin: 8px 0 0;
+  font-size: 30px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+#intro p {
+  margin: 0 0 8px;
+  max-width: 24ch;
+  font-size: 14.5px;
+  line-height: 1.45;
+  color: rgba(246, 242, 236, 0.66);
+}
+#intro .action { width: auto; min-width: 204px; background: #f6f2ec; color: #16130f; }
+#intro .text { color: rgba(246, 242, 236, 0.55); padding: 6px 10px; }
 
 /* ---------------- full-screen screens ---------------- */
 

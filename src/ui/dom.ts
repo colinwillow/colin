@@ -64,6 +64,7 @@ const PATHS: Record<string, string> = {
   photos: 'M4 8h3l1.5-2h7L17 8h3v11H4zM12 16.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7',
   gallery: 'M4 5h16v14H4zM4 15.5 9 11l4.5 4M14 13l2.5-2.2L20 13.6M9 9h.01',
   more: 'M6 12h.01M12 12h.01M18 12h.01',
+  grid: 'M4.5 4.5h6v6h-6zM13.5 4.5h6v6h-6zM4.5 13.5h6v6h-6zM13.5 13.5h6v6h-6z',
   home: 'M4 10.5 12 4l8 6.5V20h-5v-6H9v6H4z',
   style: 'M8 4 5 6 3 9l2.5 1.8L7 9v11h10V9l1.5 1.8L21 9l-2-3-3-2-2 2.2h-4z',
   back: 'M14.5 5.5 8 12l6.5 6.5',

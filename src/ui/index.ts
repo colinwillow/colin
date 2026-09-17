@@ -6,6 +6,7 @@
 import './ui.css';
 import { createShell, type ScreenFactory, type Shell } from './shell';
 import type { UiContext } from './context';
+import { stage } from './screens/stage';
 import { home } from './screens/home';
 import { outfits } from './screens/outfits';
 import { poses } from './screens/poses';
@@ -16,7 +17,7 @@ import { gallery } from './screens/gallery';
 import { more } from './screens/more';
 
 const SCREENS: Record<string, ScreenFactory> = {
-  home, outfits, poses, mood, emotes, rooms, camera, gallery, more,
+  stage, home, outfits, poses, mood, emotes, rooms, camera, gallery, more,
 };
 
 export type { UiContext } from './context';

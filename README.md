@@ -32,8 +32,14 @@ him*.
 backdrops, a camera and a gallery, with him live on screen behind all of it. See
 *The app around him*.
 
+**Milestone 4 — the app gets out of the way.** It opens on him, with a front door
+that collects the one tap everything needs and a greeting on the other side of
+it. The meter reads your actual voice. And there is a switch that redraws him as
+a cel-shaded drawing, for comparing. See *Him, and nothing else* and *The other
+way he could look*.
+
 Still to do: more wearables and more rooms, both of which are Blender exports
-rather than code.
+rather than code — and voice commands, which is where this is actually going.
 
 ## Layout
 
@@ -48,6 +54,8 @@ src/mood.ts                     what the conversation leaves him in
 src/wave.ts                     the level meter along the bottom
 src/talk.ts                     the conversation: ears -> brain -> voice -> mouth
 src/listen.ts                   the browser's speech recognition, and when to deafen it
+src/mic.ts                      your voice as audio, for the meter — not the recogniser
+src/toon.ts                     the other way he could look: bands, a rim, an ink line
 src/brain.ts                    the Worker chat call, streamed
 src/voice.ts                    the ElevenLabs clone: chunking, scheduling, the audio graph
 src/visemes.ts                  text and character timings -> mouth shapes -> morph targets
@@ -63,7 +71,7 @@ src/ui/                         the app around the render — see "The app aroun
   context.ts                    everything a screen is allowed to touch
   dom.ts                        el(), icon(), button() — the whole view layer
   ui.css                        the look: one scale, one radius, one shadow
-  screens/                      home, outfits, poses, mood, emotes, rooms, camera, gallery, more
+  screens/                      stage, home, outfits, poses, mood, emotes, rooms, camera, gallery, more
 VISEMES.md                      what the face has, and who is allowed to move it
 public/kitchen/                 the baked assets, served verbatim
   kitchen_room_02.glb           the room: 82 meshes, Draco + WebP
@@ -719,15 +727,31 @@ Any shape that is commanded is reached fast and only the drift back to neutral i
 lazy: closing your lips is a movement, not a relaxation, and easing both ways
 left the jaw degrees open through an M.
 
-### The bar along the bottom
+### The meter along the bottom
 
-**His half is real** — the voice already has an analyser on the way to the
-speakers, so those are actual samples. **Yours is not.** Drawing your real
-waveform means `getUserMedia`, and speech recognition is a separate grant from an
-audio stream: the browser asks for the microphone twice, which is a bad trade for
-a decoration. So while you talk it is driven by the recogniser — words arriving
-push it up, silence lets it fall. It tracks *whether* you are talking, not what
-it sounds like. Warm while he speaks, cool while you do.
+**Both halves are real.** His comes off the analyser the voice already has on the
+way to the speakers. Yours comes off `src/mic.ts` — a second permission, and
+worth it: a sine wave pretending to be your voice is fine as a placeholder and
+obvious the moment you look at it. When the microphone is refused, or the browser
+has none, it falls back to the old behaviour and the recogniser drives it: words
+arriving push it up, silence lets it fall.
+
+It draws a **spectrum**, not a waveform, and that is the difference between
+looking alive and looking like an oscilloscope. A time-domain trace of speech at
+this size is a fuzzy band — every frame a different squiggle of about the same
+height. The frequency domain moves the way a voice does: vowels sit low and wide,
+consonants flick the top end, and the shape follows what is being said rather
+than where the buffer happened to start.
+
+The bars are spaced **logarithmically**, because the linear bins the FFT hands
+back put everything anyone says in the leftmost eighth of them, and the top end
+is tilted up, because the energy in an "s" is a fraction of the energy in an
+"ah". Warm while he speaks, cool while you do, arched at rest.
+
+Two things keep the microphone out of trouble: it shares the voice's
+`AudioContext` (a page gets a small number of them and iOS suspends them on a
+whim), and it is connected to an analyser and **nothing else** — a live
+microphone wired to the speakers is a feedback loop with a face.
 
 Tapping the captions hides them; a small chip brings them back.
 
@@ -786,6 +810,104 @@ Sun shadows are a switch of their own, since they are the expensive part —
 enabling them turns on the renderer's shadow map and marks all 82 room meshes as
 casters and receivers, and the flag is dropped again when the experiment is off
 so the character pass never pays for it.
+
+## Him, and nothing else
+
+The app opens on `stage`: the room, the man in it, a caption, the meter, and one
+chip in the corner. No tab bar, no floating buttons, nothing laid over his face.
+Everything the *app around him* section describes is still there and is one chip
+away — it is a workshop you go into deliberately and come back out of.
+
+That is the whole reason the default changed. A tab bar along the bottom of the
+first thing you see makes it an app with a character in it. This way round it is
+a character, with an app folded up behind him.
+
+### The front door
+
+Not a splash screen — a gesture collector with a face on it. Audio will not start
+without a tap, the microphone will not open without a tap, and the speech
+recogniser will not start without a tap. So there *has* to be one; the only
+choice is whether it is a button labelled "talk" tucked in a corner, or the first
+thing you see. Making it the first thing you see is what turns "open the app,
+find the control, press it" into "open the app and he says hello".
+
+Everything the app needs comes out of that single tap, in this order, because the
+order is load-bearing on iOS:
+
+```
+voice.arm()          build the AudioContext — needs the gesture
+mic.open(context)    ask for the microphone — the prompt suspends the context
+voice.arm()          resume it, free when it is already awake
+speak(greeting)      he says something
+openEars()           and only then does the recogniser start
+```
+
+It shows on every load, and that is not a missing "remember me": a browser will
+not carry an audio grant across a page load, so there is nothing to remember —
+and somebody who wanted to be talked to is not annoyed by being asked whether
+they want to be talked to. **Just look around** skips the lot.
+
+## The other way he could look
+
+A switch, not a decision. `src/toon.ts` installs a patch on his materials at
+load and drives it from a uniform, so turning it on is an assignment rather than
+four hundred recompiled programs, and at `amount: 0` what comes back is exactly
+the physically-based render this shipped with. *More → Toon shading* is the
+switch; the tuning panel's **Toon** folder has all ten numbers live.
+
+Four things together are what read as cel shaded, and only the first is the one
+people name:
+
+| | |
+|---|---|
+| the ramp | direct diffuse light in steps instead of a gradient |
+| the rim | a lit edge where the surface turns away from the lens |
+| the outline | an actual ink line, from a back-facing hull one size up |
+| the glow | the texture lifting itself, so colour looks emitted |
+
+**What makes the look is steps, not brightness.** A sphere under a smooth falloff
+reads as a sphere however bright it is; what makes it read as a *drawing* is that
+the gradient is thrown away and replaced by flat regions with a hard edge
+between them. So the number that matters is `bands`. The `floor` is the other
+half: the darkest band never falls to black, it keeps a fraction of full light,
+so a toon shadow on a red coat is still red.
+
+Three things about the implementation are worth knowing, because each of them
+was a wrong version first.
+
+- **The ramp goes on the diffuse irradiance, not on `dotNL`.** `dotNL` in three's
+  chunk feeds the specular term as well, so ramping it bands the *highlights* —
+  which on a roughness-0.75 face is a set of hard white blobs sliding around his
+  forehead, the exact opposite of flat. Ramped one line later, the light lands in
+  steps and the specular stays a highlight.
+- **`customProgramCacheKey` is not optional.** three builds a program cache key
+  out of a material's parameters and nothing else — `onBeforeCompile` is not in
+  it — so two materials with identical parameters share one compiled program and
+  whichever compiled first decides for both. Without the key the patch reaches
+  some of him and not the rest. (This is the same trap `colinwillow/plutopia`
+  documents, and where the ramp itself came from; it is on r128, where the
+  lighting chunk still said `geometry.normal`. Every substring here was checked
+  against the pinned r185 in `node_modules` — each occurs exactly once.)
+- **Emission is capped rather than scaled.** He carries his diffuse map back as
+  emission to hold his level up in a dark baked kitchen — 0.72 there, 0.3 in a
+  studio. Stacked under a raised floor the kitchen's value blows him out. A flat
+  multiplier tuned against 0.72 also cuts the studio's 0.3, and the comparison
+  the feature exists for turns into "the toon one is darker"; a ceiling leaves
+  any room already under it alone.
+
+The ink line is a back-facing copy of him one size up — the cheap trick, and
+still the right one here: no second pass, no depth buffer to sample, and it
+follows the skeleton and the blend shapes for free because it *is* the same
+geometry bound to the same skeleton. It is pushed along the normal in view space
+and scaled by depth, so the line is a constant thickness on screen. His eyes and
+teeth are left out of it, an outlined eyeball being a black ring in the middle of
+his face.
+
+Its one real limitation shows on his hair: a hull pushed along the normals opens
+up wherever the normals are split, so a low-poly shape with hard edges gets a
+faceted line rather than a smooth one. The fixes are a normal-smoothed copy of
+the geometry or a screen-space edge pass, and neither is worth doing until the
+look itself is chosen.
 
 ## The app around him
 

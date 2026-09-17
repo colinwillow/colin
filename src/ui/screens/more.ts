@@ -20,6 +20,19 @@ export const more = (ctx: UiContext): Screen => {
         el('div.title', {}, 'More'),
         el('div.chip', { style: 'visibility:hidden' })),
       el('div.body', {},
+        el('div.section', {}, 'Look'),
+        /* One switch on an experiment with ten numbers behind it. The numbers
+           are in the tuning panel; this is the only one worth having a button
+           for, because the question it answers is "which of the two do I
+           prefer" and that is asked by looking, not by tuning. */
+        row('Toon shading', 'Flat bands, a rim light and an ink line',
+          ctx.toon.config.amount > 0 ? 'On' : 'Off', () => {
+            ctx.toon.config.amount = ctx.toon.config.amount > 0 ? 0 : 1;
+            ctx.toon.apply();
+            ctx.shell.toast(ctx.toon.config.amount > 0 ? 'Drawn' : 'Rendered');
+            ctx.shell.refresh();
+          }),
+
         el('div.section', {}, 'Him'),
         row('Captions', 'Show what is being said', captionsOn ? 'On' : 'Off', () => {
           // The captions belong to the conversation, which put its own listeners
@@ -27,6 +40,16 @@ export const more = (ctx: UiContext): Screen => {
           // past it to set the state twice.
           document.getElementById(captionsOn ? 'say' : 'captions')?.click();
           ctx.shell.refresh();
+        }),
+        row('Your microphone', ctx.talk.heard.on
+          ? 'The meter is reading your actual voice'
+          : ctx.talk.heard.refused
+            ? 'Refused — the meter is guessing from the words instead'
+            : 'Opens when you first say hello',
+        ctx.talk.heard.on ? 'On' : 'Off', () => {
+          ctx.shell.toast(ctx.talk.heard.on
+            ? 'Already listening to the room'
+            : 'Press talk and allow the microphone');
         }),
         row('Forget the conversation', 'He keeps the last few turns', null, () => {
           ctx.talk.brain.forget();
@@ -71,5 +94,5 @@ export const more = (ctx: UiContext): Screen => {
           `${ctx.wardrobe.items.length} wearables`)));
   };
 
-  return { id: 'more', tabs: false, cover: build };
+  return { id: 'more', chrome: 'none', cover: build };
 };

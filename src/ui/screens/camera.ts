@@ -66,7 +66,7 @@ export const camera = (ctx: UiContext): Screen => {
 
   return {
     id: 'camera',
-    tabs: false,
+    chrome: 'none',
     shot: mode,
 
     enter: () => { void showLast(); },

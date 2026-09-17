@@ -16,6 +16,7 @@ import * as THREE from 'three';
 import { createBrain, type Brain } from './brain';
 import { createVoice, type Voice } from './voice';
 import { createEars, canListen, type Ears } from './listen';
+import { createMic, type Mic } from './mic';
 import { createMouth, type Mouth } from './visemes';
 import { createWave, type Wave } from './wave';
 import { moodFor, EXPRESSION_FOR, type Mood } from './mood';
@@ -54,6 +55,9 @@ export interface Conversation {
   voice: Voice;
   ears: Ears;
   mouth: Mouth | null;
+  /** Your voice as audio, for the meter. Separate from the recogniser, which
+   *  hears words rather than sound. */
+  heard: Mic;
   /** The bottom-of-screen level meter, drawn from the render loop. */
   wave: Wave | null;
   /** What the last exchange put him in. Drives which idle he falls into. */
@@ -71,13 +75,14 @@ export function createConversation(opts: TalkOptions): Conversation {
   const brain = createBrain(endpoint, persona);
   const voice = createVoice(endpoint, persona);
   const ears = createEars();
+  const listen = createMic();
   const mouth = face ? createMouth(face) : null;
 
   const say = document.getElementById('say');
   const mic = document.getElementById('mic') as HTMLButtonElement | null;
   const chip = document.getElementById('captions') as HTMLButtonElement | null;
   const canvas = document.getElementById('wave') as HTMLCanvasElement | null;
-  const wave = canvas ? createWave(canvas, voice) : null;
+  const wave = canvas ? createWave(canvas, { voice, mic: listen }) : null;
 
   /* Captions out of the way, and a chip to bring them back. Tapping the text
      itself hides it, which is where anyone annoyed by it is already looking. */
@@ -96,6 +101,14 @@ export function createConversation(opts: TalkOptions): Conversation {
   // this is what stops him wandering off and what turns him to face you.
   let engaged = false;
   let listening = false;
+
+  /* The meter follows the MICROPHONE, not the engagement.
+     `engaged` is true while he is thinking and answering, which is precisely
+     when you are not talking — so keying the meter to it drew your colour while
+     he held the floor and nothing at all while you actually spoke. It is on
+     whenever the session is open and he is not speaking; `wave` itself takes
+     over the moment his first sample plays. */
+  const meterFollows = () => { if (wave) wave.meter.mode = listening ? 'listening' : 'idle'; };
 
   const caption = (heard: string, reply: string) => {
     if (!say || !captionsOn) return;
@@ -120,7 +133,6 @@ export function createConversation(opts: TalkOptions): Conversation {
        engaged, so straight ahead IS at you — and meeting someone's eye is most
        of what separates being answered from being talked near. */
     alive?.lookAt(yes ? 0 : null, 0);
-    if (wave) wave.meter.mode = yes ? 'listening' : 'idle';
     mic?.classList.toggle('busy', yes);
     if (mic && listening) mic.textContent = yes ? 'his turn' : 'listening';
   };
@@ -198,6 +210,7 @@ export function createConversation(opts: TalkOptions): Conversation {
     mic.addEventListener('click', () => {
       if (listening) {
         listening = false;
+        meterFollows();
         ears.stop();
         voice.stop();
         engage(false);
@@ -207,6 +220,7 @@ export function createConversation(opts: TalkOptions): Conversation {
         return;
       }
       listening = true;
+      meterFollows();
       mic.classList.add('on');
       mic.textContent = 'his turn';
       /* Greet first, listen second.
@@ -220,6 +234,13 @@ export function createConversation(opts: TalkOptions): Conversation {
        */
       void (async () => {
         engage(true);
+        /* Everything that needs a gesture, in the gesture. The context has to
+           exist before the microphone can hang off it, and asking for the
+           microphone suspends the context on iOS — so it is armed, opened, and
+           armed again, which is free when it is already awake. */
+        await voice.arm();
+        if (voice.context) await listen.open(voice.context);
+        await voice.arm();
         const line = nextIntro();
         caption('', line);
         alive?.blinkNow();
@@ -236,6 +257,7 @@ export function createConversation(opts: TalkOptions): Conversation {
 
   const update = (dt: number) => {
     voice.update();
+    listen.update();
     mouth?.update(dt, voice.shape());
     wave?.update(dt);
     if (!engaged) return;
@@ -253,7 +275,7 @@ export function createConversation(opts: TalkOptions): Conversation {
   };
 
   return {
-    update, brain, voice, ears, mouth, wave,
+    update, brain, voice, ears, mouth, wave, heard: listen,
     get mood() { return mood; },
     say: (text: string) => { void answer(text); },
     get listening() { return listening; },

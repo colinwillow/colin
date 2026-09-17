@@ -38,7 +38,10 @@ export const home = (ctx: UiContext): Screen => {
         el('div.title', {}, 'Colin'),
         sub),
       el('div.spring'),
-      button('chip.glass', () => ctx.shell.go('more'), icon('gear', 19))),
+      button('chip.glass', () => ctx.shell.go('more'), icon('gear', 19)),
+      /* Out of the app and back to him. The hub is a place you visited, not
+         where the app lives, and there has to be a door marked so. */
+      button('chip.glass', () => ctx.shell.go('stage'), icon('close', 19))),
 
     body: () => {
       // Three down each side, so he is never behind a button.

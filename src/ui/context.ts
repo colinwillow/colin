@@ -11,6 +11,7 @@ import type { ShotDirector } from '../shot';
 import type { Poses } from '../poses';
 import type { Wardrobe } from '../wardrobe';
 import type { Camera } from '../photos';
+import type { Toon } from '../toon';
 import type { createWander } from '../wander';
 import type { Shell } from './shell';
 
@@ -25,6 +26,8 @@ export interface UiContext {
   poses: Poses;
   wardrobe: Wardrobe;
   camera: Camera;
+  /** The cel-shading experiment. `toon.config.amount` is the whole switch. */
+  toon: Toon;
   /** Toggles the developer tuning panel. */
   tuning: (on?: boolean) => boolean;
   shell: Shell;

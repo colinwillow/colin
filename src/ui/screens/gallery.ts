@@ -96,7 +96,7 @@ export const gallery = (ctx: UiContext): Screen => {
 
   return {
     id: 'gallery',
-    tabs: false,
+    chrome: 'none',
 
     enter: () => { void reload(); },
     exit: () => {
