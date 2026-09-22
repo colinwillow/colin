@@ -156,9 +156,14 @@ export function createRoomLights(
 
     if (on && config.shadows) prepareShadows();
     sun.castShadow = on && config.shadows && shadowsReady;
-    // Shared with the character pass, so only claim it while this is on.
-    renderer.shadowMap.enabled = on && config.shadows;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    /* Only ever turned ON here. The studio floor in `ground.ts` wants the same
+       global, and two features that each switch it off when they are idle end up
+       turning each other off — which light actually casts is the per-light flag
+       above, and that is the one that belongs to this experiment.
+       PCF rather than PCFSoft: in r185 the soft type is not a shader define any
+       more and falls through to the hard single-tap one. */
+    if (on && config.shadows) renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
   };
 
   apply();

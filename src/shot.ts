@@ -48,6 +48,10 @@ export interface SafeArea { top: number; bottom: number }
    noses — so everything here is 40mm and up, and the long end is reserved for
    the shots that are actually about his face. */
 export const SHOTS = {
+  /** Him in a room, with air around him. What the app opens on, and the only
+   *  shot that is about the SPACE as much as the figure: a white sweep with a
+   *  figure filling it is a passport photo. */
+  standing: { lensMm: 45, coverM: 3.05, lookAtY: 1.04, eyeY: 1.32, yawDeg: 0 },
   /** Head to toe, a little air top and bottom. The outfit shot. */
   full: { lensMm: 42, coverM: 2.45, lookAtY: 1.06, eyeY: 1.2, yawDeg: 0 },
   /** Knees up. Close enough to read a face, wide enough to see a pose. */

@@ -328,6 +328,15 @@ body.ready #ui { opacity: 1; }
   align-items: center;
   padding-inline: var(--gutter);
 }
+/* The two doors either side of the microphone take the same width as each other
+   and the same shape as it, so the row reads as one control with a thing on
+   each side rather than as three unrelated buttons. */
+#tabs.bare > :is(button, .chip):not(#mic) {
+  flex: 1 1 0;
+  max-width: 96px;
+  height: 40px;
+  border-radius: 14px;
+}
 #tabs > button:not(#mic) {
   pointer-events: auto;
   flex: 1 1 0;
@@ -388,48 +397,56 @@ body.ready #ui { opacity: 1; }
   transition: opacity 0.4s ease;
 }
 body.ready #talk { opacity: 1; }
+/* NO BUBBLE. A panel behind the words is a subtitle track, and this is meant to
+   be him talking with the transcript available if you want it — so the text sits
+   on the room, carrying only enough of a halo to survive a white sweep and a
+   dark kitchen alike. That halo is two shadows: a tight bright one for contrast
+   against anything pale, and a wide dark one for anything bright. */
 #say {
   pointer-events: auto;
-  max-width: 36ch;
+  max-width: 30ch;
   text-align: center;
-  font-size: 14px;
-  line-height: 1.35;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.38;
+  letter-spacing: -0.005em;
   color: var(--ink);
-  padding: 9px 14px;
-  border-radius: 15px;
-  background: var(--surface-solid);
-  border: 1px solid var(--edge);
-  box-shadow: var(--shadow);
-  text-shadow: none;
+  padding: 4px 10px;
   min-height: 0;
   cursor: pointer;
-}
-@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
-  #say { background: var(--surface); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); }
+  text-shadow:
+    0 0 6px rgba(252, 251, 249, 0.95),
+    0 0 18px rgba(252, 251, 249, 0.8),
+    0 1px 2px rgba(252, 251, 249, 0.9);
 }
 #say:empty { display: none; }
 #say.off { display: none; }
 #say b { font-weight: 600; color: var(--selected-edge); }
+/* Always there, and it says which way it is set: this is one of three fixed
+   slots in the dock, and a control that disappears when you use it leaves a hole
+   in the row it was holding open. */
 #captions {
   pointer-events: auto;
-  display: none;
+  display: grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 12px;
-  color: var(--ink-soft);
+  /* Square on its own, above the captions; the bare dock's flex rule stretches
+     it into a pill to match the microphone when it sits in the row. */
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  color: var(--ink-faint);
   background: var(--surface-solid);
   border: 1px solid var(--edge);
   box-shadow: var(--shadow);
 }
-#captions.on { display: grid; }
+#captions.on { color: var(--selected-edge); background: var(--selected); border-color: var(--selected-edge); }
 #captions svg { width: 17px; height: 17px; }
 /* The level meter is a flat line when nothing is being said, and a flat line
    under the captions reads as a rule somebody left in. It appears with the
    microphone. */
-/* Bigger than it was, because it is now worth looking at: both halves are real
-   audio, and a 34-bar spectrum needs room to be a spectrum. */
-#wave { width: min(268px, 66vw); height: 34px; display: none; }
+/* Three lines that come apart need vertical room to come apart in. Wider and
+   taller than the old bar row, and still only a strip. */
+#wave { width: min(300px, 74vw); height: 58px; display: none; }
 #ui:has(#mic.on) #wave { display: block; }
 
 /* ---------------- the front door ---------------- */

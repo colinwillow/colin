@@ -1,24 +1,24 @@
-// The meter: the only thing on screen while the two of you are talking, so it
-// has to be worth looking at and it has to be true.
+// The meter: three lines that come apart when somebody talks.
 //
-// BOTH HALVES ARE REAL NOW. His comes off the analyser the voice already has on
-// the way to the speakers; yours comes off `src/mic.ts`, which is a second
-// permission and worth it — a sine wave pretending to be your voice is fine as a
-// placeholder and obvious the moment you look at it. When there is no microphone
-// (denied, or a browser without one) it falls back to the old behaviour: the
-// recogniser pushes the level up as words arrive.
+// The old one was a row of bars, and a row of bars is a level display — it goes
+// up and down and that is all it can say. This is three travelling waves, one
+// per third of the spectrum, and each of them is doing four things at once:
 //
-// It draws a SPECTRUM rather than a waveform, and that is the difference between
-// looking alive and looking like an oscilloscope. A time-domain trace of speech
-// at this size is a fuzzy band — every frame is a different random squiggle of
-// about the same height. The frequency domain moves the way a voice does:
-// vowels sit low and wide, consonants flick the top end, and the shape changes
-// with what is being said rather than with where the buffer happened to start.
+//   its AMPLITUDE is that third's energy
+//   its SHAPE is the eight sub-bands inside that third, so it deforms with the
+//     actual sound rather than sliding past as a rigid sine
+//   its PITCH tightens with the spectral centroid — bright sounds wiggle faster
+//   its SPEED kicks on spectral flux, so consonants and plosives land
 //
-// The bars are spaced LOGARITHMICALLY, because the linear bins the FFT hands
-// back put everything anyone says in the leftmost eighth of them. An octave is
-// an octave wide here, so a voice fills the whole meter.
-import * as THREE from 'three';
+// The bottom line is the chest of a voice, the middle its body, the top its
+// consonants; they sit on top of each other at rest and separate the moment
+// anything happens. That separation is the whole effect — a single line can only
+// be louder or quieter, and three can disagree.
+//
+// All of the numbers come from `audio.ts`, which is where the moving noise floor
+// is, and that is the part that actually made this reactive. Everything below is
+// drawing.
+import { createFeatureReader, type Features } from './audio';
 
 export type WaveMode = 'idle' | 'listening' | 'speaking';
 
@@ -30,32 +30,22 @@ export interface Meter {
 }
 
 interface Palette {
-  /** The bars, left to right. Two stops, so the meter has a direction. */
-  from: string;
-  to: string;
-  /** How much light it throws. */
-  glow: number;
+  /** Bottom line to top line. Darkest and heaviest first. */
+  lines: [string, string, string];
+  glow: string;
 }
 
-/** Warm when he talks, cool when you do, and barely there when neither. */
+/** Warm when he talks, cool when you do, and grey when neither. Chosen to read
+ *  on a white sweep, which is what he now stands on by default. */
 const COLOURS: Record<WaveMode, Palette> = {
-  idle: { from: 'rgba(150, 141, 130, 0.5)', to: 'rgba(150, 141, 130, 0.5)', glow: 0 },
-  listening: { from: '#4aa8c8', to: '#7ee0d0', glow: 10 },
-  speaking: { from: '#e0a86a', to: '#f0d08a', glow: 12 },
+  idle: { lines: ['rgba(120,112,103,0.40)', 'rgba(120,112,103,0.30)', 'rgba(120,112,103,0.22)'], glow: 'rgba(0,0,0,0)' },
+  listening: { lines: ['#1d7fa6', '#2fb3c4', '#6fe0cf'], glow: 'rgba(47,179,196,0.55)' },
+  speaking: { lines: ['#c2762e', '#e0a04a', '#f2cd7c'], glow: 'rgba(224,160,74,0.55)' },
 };
 
 export interface WaveSources {
-  voice: {
-    readonly speaking: boolean;
-    readonly level: number;
-    spectrum: (into: Uint8Array<ArrayBuffer>) => boolean;
-    readonly context: AudioContext | null;
-  };
-  mic?: {
-    readonly on: boolean;
-    readonly level: number;
-    spectrum: (into: Uint8Array<ArrayBuffer>) => boolean;
-  };
+  voice: { readonly speaking: boolean; readonly analyser: AnalyserNode | null };
+  mic?: { readonly on: boolean; readonly analyser: AnalyserNode | null };
 }
 
 export interface Wave {
@@ -66,56 +56,56 @@ export interface Wave {
   heard: () => void;
 }
 
-/** How many bars. Enough to read as a spectrum, few enough to stay chunky on a
- *  phone — at 64 they are hairlines and the whole thing turns into a smear. */
-const BARS = 34;
-/** The band a voice actually occupies. Below 90 Hz is room rumble and above
- *  6 kHz is sibilance and hiss; between them is everything anyone says. */
-const LOW_HZ = 90;
-const HIGH_HZ = 6200;
+/** Eight sub-bands per line, three lines. The eight are what makes a line
+ *  deform along its length instead of just getting taller. */
+const PER_LINE = 8;
+const LINES = 3;
+const BANDS = LINES * PER_LINE;
+/** Points along each line. Enough to curve smoothly, few enough to be free. */
+const STEPS = 72;
+const TAU = Math.PI * 2;
+
+/** How each line behaves. Low and slow at the bottom, quick and thin on top. */
+const SHAPE = [
+  { cycles: 1.5, speed: 0.55, weight: 2.4, reach: 1.0 },
+  { cycles: 2.6, speed: 0.95, weight: 1.7, reach: 0.82 },
+  { cycles: 4.1, speed: 1.55, weight: 1.2, reach: 0.64 },
+];
 
 export function createWave(canvas: HTMLCanvasElement, sources: WaveSources): Wave {
   const ctx = canvas.getContext('2d');
   const meter: Meter = { mode: 'idle', energy: 0 };
 
-  const bins = new Uint8Array(2048);
-  const bars = new Float32Array(BARS);
-  /** What is drawn, eased toward what is wanted, so nothing ever snaps. */
-  const shown = new Float32Array(BARS);
-  let phase = 0;
+  const mine = createFeatureReader(BANDS);
+  const his = createFeatureReader(BANDS);
+
+  /** Phase per line, advanced at its own rate so they never lock together. */
+  const phase = [0, 2.1, 4.3];
+  /** What is drawn, eased toward what the analyser says. */
+  const shown = new Float32Array(BANDS);
+  let shownLevel = 0;
+  let shownCentroid = 0;
+  let shownImpulse = 0;
 
   const fit = () => {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const w = canvas.clientWidth || 240;
-    const h = canvas.clientHeight || 34;
+    const w = canvas.clientWidth || 260;
+    const h = canvas.clientHeight || 56;
     if (canvas.width !== Math.round(w * dpr)) canvas.width = Math.round(w * dpr);
     if (canvas.height !== Math.round(h * dpr)) canvas.height = Math.round(h * dpr);
   };
 
-  /**
-   * FFT bins → bars, log-spaced, with the top end lifted.
-   *
-   * Speech falls off steeply with frequency — the energy in an "s" is a fraction
-   * of the energy in an "ah" — so a meter drawn straight off the magnitudes is
-   * a hill on the left and nothing else. The tilt is the same one every audio
-   * meter applies, and it is what makes consonants visible at all.
-   */
-  const fold = (read: (into: Uint8Array<ArrayBuffer>) => boolean, binCount: number, nyquist: number) => {
-    if (!read(bins)) return false;
-    const usable = Math.min(binCount, bins.length);
-    for (let i = 0; i < BARS; i++) {
-      const lo = LOW_HZ * Math.pow(HIGH_HZ / LOW_HZ, i / BARS);
-      const hi = LOW_HZ * Math.pow(HIGH_HZ / LOW_HZ, (i + 1) / BARS);
-      const from = Math.max(0, Math.min(usable - 1, Math.floor((lo / nyquist) * usable)));
-      const to = Math.max(from + 1, Math.min(usable, Math.ceil((hi / nyquist) * usable)));
-      let peak = 0;
-      // The peak rather than the mean: an average across a wide high band is
-      // always small, and the thing worth drawing is the loudest thing in it.
-      for (let b = from; b < to; b++) peak = Math.max(peak, bins[b]);
-      const tilt = 1 + (i / BARS) * 1.25;
-      bars[i] = Math.min(1, (peak / 255) * tilt);
-    }
-    return true;
+  /** The eight sub-bands of one line, sampled smoothly at t. */
+  const detailAt = (line: number, t: number) => {
+    const x = t * (PER_LINE - 1);
+    const i = Math.min(PER_LINE - 2, Math.floor(x));
+    const f = x - i;
+    const a = shown[line * PER_LINE + i];
+    const b = shown[line * PER_LINE + i + 1];
+    // Smoothstep between neighbours: linear interpolation puts a visible corner
+    // at every sub-band boundary, which reads as eight segments rather than one
+    // line that happens to be deforming.
+    return a + (b - a) * (f * f * (3 - 2 * f));
   };
 
   const update = (dt: number) => {
@@ -127,61 +117,83 @@ export function createWave(canvas: HTMLCanvasElement, sources: WaveSources): Wav
     meter.energy = Math.max(0, meter.energy - dt * 1.6);
     const mode: WaveMode = sources.voice.speaking ? 'speaking' : meter.mode;
 
-    const rate = sources.voice.context?.sampleRate ?? 48000;
-    let real = false;
-    if (mode === 'speaking') real = fold(sources.voice.spectrum, 1024, rate / 2);
-    else if (mode === 'listening' && sources.mic?.on) real = fold(sources.mic.spectrum, 512, rate / 2);
+    /* Both are read every frame regardless of whose turn it is. An analyser that
+       is not being drawn still has to keep its history moving, or the moving
+       noise floor restarts from nothing every time the turn changes and the
+       first second of every sentence is wrong. */
+    his.read(sources.voice.analyser);
+    mine.read(sources.mic?.on ? sources.mic.analyser : null);
 
-    if (!real) {
-      /* No microphone, or nothing playing. Three sines that do not share a
-         period, so it never visibly repeats, scaled by whatever the recogniser
-         has told us — it tracks WHETHER you are talking, not what it sounds
-         like, and it should look like the guess it is. */
-      phase += dt * (mode === 'listening' ? 5.2 : 1.1);
-      const amp = mode === 'listening' ? 0.2 + meter.energy * 0.65 : 0.05;
-      for (let i = 0; i < BARS; i++) {
-        const x = (i / BARS) * Math.PI * 2;
-        bars[i] = Math.abs(amp * (
-          Math.sin(x * 3 + phase) * 0.5
-          + Math.sin(x * 5.3 - phase * 0.7) * 0.3
-          + Math.sin(x * 8.1 + phase * 1.3) * 0.2));
-      }
-    }
+    const from: Features = mode === 'speaking' ? his.features : mine.features;
+    const real = mode !== 'idle' && from.live;
 
-    // Arched, always: the ends are shorter than the middle whatever the signal
-    // is doing, which is what stops it reading as a bar chart. The FLOOR is
-    // arched too — a uniform minimum turns silence into a row of identical dots,
-    // and a lens-shaped one still reads as a meter waiting for something.
-    for (let i = 0; i < BARS; i++) {
-      const arch = 0.45 + 0.55 * Math.sin((i / (BARS - 1)) * Math.PI);
-      const want = Math.max(0.03 + 0.08 * arch, bars[i] * arch);
-      // Fast attack, slow release — the same asymmetry every meter has, and the
-      // reason a peak stays long enough to be seen.
-      const k = 1 - Math.pow(want > shown[i] ? 0.00005 : 0.02, dt);
-      shown[i] += (want - shown[i]) * k;
+    if (real) {
+      for (let i = 0; i < BANDS; i++) shown[i] += (from.bands[i] - shown[i]) * (1 - Math.pow(0.02, dt));
+      shownLevel += (from.level - shownLevel) * (1 - Math.pow(0.01, dt));
+      shownCentroid += (from.centroid - shownCentroid) * (1 - Math.pow(0.1, dt));
+      shownImpulse = Math.max(shownImpulse * Math.pow(0.02, dt), from.impulse);
+    } else {
+      /* No microphone, or nothing to listen to. The recogniser's word-by-word
+         energy is all there is, so the lines breathe at a level rather than
+         pretending to have a spectrum: every band gets the same number and the
+         carriers do the rest. It should look like the guess it is. */
+      const guess = mode === 'listening' ? 0.12 + meter.energy * 0.5 : 0.05;
+      for (let i = 0; i < BANDS; i++) shown[i] += (guess - shown[i]) * (1 - Math.pow(0.15, dt));
+      shownLevel += (guess - shownLevel) * (1 - Math.pow(0.1, dt));
+      shownCentroid += (0.3 - shownCentroid) * (1 - Math.pow(0.3, dt));
+      shownImpulse *= Math.pow(0.1, dt);
     }
 
     const palette = COLOURS[mode];
     ctx.clearRect(0, 0, w, h);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.shadowColor = palette.glow;
 
-    const gradient = ctx.createLinearGradient(0, 0, w, 0);
-    gradient.addColorStop(0, palette.from);
-    gradient.addColorStop(1, palette.to);
-    ctx.fillStyle = gradient;
-    ctx.shadowColor = palette.to;
-    ctx.shadowBlur = palette.glow * (canvas.width / (canvas.clientWidth || 240));
+    const dpr = canvas.width / (canvas.clientWidth || 260);
 
-    const gap = w / BARS;
-    const width = Math.max(2, gap * 0.52);
-    const radius = width / 2;
-    for (let i = 0; i < BARS; i++) {
-      const x = gap * (i + 0.5) - width / 2;
-      // Mirrored about the centre line, and never shorter than a dot: a bar that
-      // goes to nothing leaves a gap in the row and reads as a dead pixel.
-      const half = Math.max(radius, THREE.MathUtils.clamp(shown[i], 0, 1) * mid * 0.92);
+    for (let line = 0; line < LINES; line++) {
+      const shape = SHAPE[line];
+      // Brighter sounds wiggle tighter; a kick briefly speeds everything up.
+      const cycles = shape.cycles * (0.8 + shownCentroid * 0.7);
+      phase[line] += dt * shape.speed * TAU * (0.35 + shownLevel * 1.5 + shownImpulse * 1.2);
+
+      let amp = 0;
+      for (let i = 0; i < PER_LINE; i++) amp += shown[line * PER_LINE + i];
+      amp /= PER_LINE;
+      amp = Math.min(1, amp * 1.35 + shownLevel * 0.35);
+
+      /* Held apart at rest and allowed to collapse together when it gets loud.
+         Three lines with nothing to say sit on exactly the same path and read as
+         one thick line — which is what this looked like before — so they are
+         spread while it is quiet, and the spread closes as the amplitude that
+         makes them distinguishable takes over. */
+      const spread = (line - 1) * mid * 0.17 * (1 - Math.min(1, shownLevel * 1.4));
+
       ctx.beginPath();
-      ctx.roundRect(x, mid - half, width, half * 2, radius);
-      ctx.fill();
+      for (let s = 0; s <= STEPS; s++) {
+        const t = s / STEPS;
+        // Pinned at both ends: a line that reaches the edge at full height reads
+        // as a strip of something, not as a string being plucked.
+        const window_ = Math.sin(t * Math.PI);
+        const detail = detailAt(line, t);
+        const carrier =
+          Math.sin(TAU * cycles * t + phase[line]) * 0.62
+          + Math.sin(TAU * cycles * 1.73 * t - phase[line] * 0.61) * 0.38;
+        /* A tenth of the height even in silence, so the lines are always doing
+           something, and most of it available to a voice — clamped, because a
+           line that reaches the edge of the canvas is a line with its peaks
+           sliced off, and a flat top is the one shape a waveform must not have. */
+        const swing = Math.min(1, 0.1 + amp * 0.8 + detail * 0.5);
+        const y = mid + spread - carrier * window_ * swing * mid * 0.86 * shape.reach;
+        const x = t * w;
+        if (s === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = palette.lines[line];
+      ctx.lineWidth = shape.weight * dpr;
+      ctx.shadowBlur = (mode === 'idle' ? 0 : 7 + shownLevel * 9) * dpr;
+      ctx.stroke();
     }
     ctx.shadowBlur = 0;
   };

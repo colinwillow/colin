@@ -26,6 +26,7 @@
 import * as THREE from 'three';
 import type { Character, CharacterLights } from './character';
 import type { ShotDirector, ShotName } from './shot';
+import type { Ground } from './ground';
 
 export interface Backdrop {
   /** The colour of the sweep at eye level. */
@@ -65,7 +66,7 @@ export interface StageScene {
 const KITCHEN: StageScene = {
   id: 'kitchen',
   name: 'Kitchen',
-  note: 'Baked in Blender. He walks around in it.',
+  note: 'Baked in Blender. He walks around it.',
   kind: 'room',
   wander: true,
   exposure: 0.58,
@@ -95,13 +96,22 @@ const studio = (
   emissiveIntensity: 0.3,
   lights: { key: 0.85, fill: 0.45, rim: 1.1 },
   shadow: 0.85,
-  shot: 'full',
+  shot: 'standing',
   ...over,
 });
 
+/* The white room is FIRST and is what the app opens on. The kitchen is the
+   better piece of work and is still one tap away, but a plain bright space with
+   a shadow on the floor is the right thing to look at while you are talking to
+   somebody: nothing in it competes with him, and it reads as a place he is
+   rather than a set he is standing on. */
 export const SCENES: StageScene[] = [
+  studio('white', 'Studio', 'An empty white room with a floor.', '#f7f6f4', {
+    // Barely any sweep at all. A visible gradient behind him is a wall, and the
+    // thing being aimed at here is a space with no back to it.
+    backdrop: { color: '#f7f6f4', lift: 0.07 },
+  }),
   KITCHEN,
-  studio('white', 'Studio', 'Clean white sweep. Everything reads.', '#f1efeb'),
   studio('paper', 'Paper', 'Warm off-white, softer on skin.', '#e8e0d3'),
   studio('slate', 'Slate', 'Dark and moody. The rim light earns its keep.', '#2a2d33', {
     exposure: 0.72, lights: { key: 1.1, fill: 0.4, rim: 1.8 }, shadow: 0.55,
@@ -133,7 +143,10 @@ function makeSweep(renderer: THREE.WebGLRenderer, backdrop: Backdrop) {
   const lift = backdrop.lift ?? 0.22;
   const base = new THREE.Color(backdrop.color).convertSRGBToLinear();
   const top = base.clone().lerp(new THREE.Color(1, 1, 1), lift * 0.9);
-  const floor = base.clone().multiplyScalar(1 - lift * 1.6);
+  /* The floor of the sweep barely darkens. A cyclorama that visibly gets darker
+     toward the bottom draws a horizon, and a horizon turns an infinite space
+     into a room — the shadow on the ground is what says there is a floor. */
+  const floor = base.clone().multiplyScalar(1 - lift * 0.9);
 
   const height = 256;
   const data = new Float32Array(height * 4);
@@ -183,6 +196,8 @@ export interface StageParts {
   look: { exposure: number };
   wander: { config: { enabled: boolean }; halt: () => void };
   shots: ShotDirector;
+  /** The studio floor and the shadow that lands on it. */
+  ground: Ground;
 }
 
 /** Where he was standing last time. A room is a setting, not a session. */
@@ -190,7 +205,7 @@ const KEY = 'colin.room.v1';
 
 export function createStage(parts: StageParts): Stage {
   const {
-    renderer, scene, characterScene, room, roomEnvMap, colin, lights, look, wander, shots,
+    renderer, scene, characterScene, room, roomEnvMap, colin, lights, look, wander, shots, ground,
   } = parts;
 
   /** Built once each, the first time a backdrop is asked for. */
@@ -245,6 +260,9 @@ export function createStage(parts: StageParts): Stage {
     lights.fill.intensity = next.lights.fill;
     lights.rim.intensity = next.lights.rim;
     colin.setShadowStrength(next.shadow);
+    /* Last, and after the blob: in a studio this turns the blob down to a
+       whisper and puts a real shadow on the floor instead. */
+    ground.set(next.kind === 'studio');
 
     /* A studio has no floor to walk on and no room to walk around, so he is put
        back on his mark and told to stand still — and turned to face the front,
@@ -261,12 +279,15 @@ export function createStage(parts: StageParts): Stage {
     shots.set(next.shot, immediate);
   };
 
-  /* Straight in, with no ease: this runs while the loading overlay is still up,
+  /* APPLIED, not assumed. `current` starts as the first scene in the table, but
+     nothing in the world has been told about it — the room is still visible, the
+     sweep has never been built, and the camera is on the rig. A default that is
+     only ever a variable is a default that never happens.
+     Straight in, with no ease: this runs while the loading overlay is still up,
      and a camera flying to its mark behind it would arrive mid-flight. */
-  try {
-    const saved = localStorage.getItem(KEY);
-    if (saved && saved !== current.id) go(saved, true);
-  } catch { /* no storage, so the kitchen it is */ }
+  let opening = current.id;
+  try { opening = localStorage.getItem(KEY) || opening; } catch { /* no storage */ }
+  go(opening, true);
 
   return {
     scenes: SCENES,

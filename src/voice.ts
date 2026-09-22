@@ -54,8 +54,8 @@ export interface Voice {
   /** Fill `into` with the current waveform, -1..1. False when nothing is
    *  playing, in which case `into` is left alone. */
   waveform: (into: Float32Array) => boolean;
-  /** Fill `into` with the current spectrum, 0–255 per bin. False when silent. */
-  spectrum: (into: Uint8Array<ArrayBuffer>) => boolean;
+  /** What is playing, for whatever wants to read it. Null until armed. */
+  readonly analyser: AnalyserNode | null;
   /** The context this built, once armed — so the microphone can share it rather
    *  than opening a second one. A page gets a small number of these, and two
    *  running at once on iOS is how you end up with neither. */
@@ -87,11 +87,10 @@ export function createVoice(endpoint: string, persona?: string): Voice {
       for (let i = 0; i < into.length; i++) into[i] = time[Math.floor(i * step)];
       return true;
     },
-    spectrum: (into) => {
-      if (!playing || !analyser) return false;
-      analyser.getByteFrequencyData(into);
-      return true;
-    },
+    /* Handed out whether or not anything is playing: the meter decides for
+       itself what to do with a silent analyser, and a null here would make
+       "armed but between sentences" indistinguishable from "no audio at all". */
+    get analyser() { return analyser; },
     get context() { return ctx; },
     update, shape, speak, stop, arm, volume: 1,
   };

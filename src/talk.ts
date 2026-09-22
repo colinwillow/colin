@@ -84,16 +84,29 @@ export function createConversation(opts: TalkOptions): Conversation {
   const canvas = document.getElementById('wave') as HTMLCanvasElement | null;
   const wave = canvas ? createWave(canvas, { voice, mic: listen }) : null;
 
-  /* Captions out of the way, and a chip to bring them back. Tapping the text
-     itself hides it, which is where anyone annoyed by it is already looking. */
-  let captionsOn = true;
+  /* OFF UNTIL ASKED FOR. A conversation is meant to be heard, and a running
+     transcript over the top of it turns him into a screen with a video on it —
+     the words arrive in his voice and the subtitles are for the times that is
+     not enough. The chip in the corner is the way back to them, and the choice
+     is remembered, because it is a preference rather than a state.
+     Tapping the text itself puts them away, which is where anyone annoyed by
+     them is already looking. */
+  const CAPTIONS_KEY = 'colin.captions.v1';
+  let captionsOn = false;
+  try { captionsOn = localStorage.getItem(CAPTIONS_KEY) === 'on'; } catch { /* no storage */ }
   const showCaptions = (on: boolean) => {
     captionsOn = on;
     say?.classList.toggle('off', !on);
-    chip?.classList.toggle('on', !on);
+    // A toggle that is always there, rather than a chip that appears only while
+    // the thing it turns on is off. It sits in a fixed slot in the dock, and a
+    // control that vanishes leaves a hole in the row it was holding open.
+    chip?.classList.toggle('on', on);
+    if (!on && say) say.textContent = '';
+    try { localStorage.setItem(CAPTIONS_KEY, on ? 'on' : 'off'); } catch { /* no storage */ }
   };
   say?.addEventListener('click', () => showCaptions(false));
-  chip?.addEventListener('click', () => showCaptions(true));
+  chip?.addEventListener('click', () => showCaptions(!captionsOn));
+  showCaptions(captionsOn);
 
   let mood: Mood = 'neutral';
 
@@ -257,7 +270,6 @@ export function createConversation(opts: TalkOptions): Conversation {
 
   const update = (dt: number) => {
     voice.update();
-    listen.update();
     mouth?.update(dt, voice.shape());
     wave?.update(dt);
     if (!engaged) return;

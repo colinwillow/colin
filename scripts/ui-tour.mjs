@@ -66,6 +66,7 @@ const steps = [
   // The front door, and then him with nothing on top of him.
   ['intro', async () => {}],
   ['stage', async () => tap('Say hello')],
+  ['stage-captions', async () => { await tap('#captions'); await page.waitForTimeout(700); }],
   ['home', async () => tap('#tabs .chip')],
   ['outfits', async () => tap('Outfits')],
   ['poses', async () => { await tap('.chip'); await tap('Poses'); }],
@@ -74,8 +75,10 @@ const steps = [
   ['mood', async () => { await tap('.chip'); await tap('Mood'); }],
   ['emotes', async () => { await tap('.chip'); await tap('Emotes'); }],
   ['rooms', async () => { await tap('.chip'); await tap('Rooms'); }],
-  ['rooms-studio', async () => tap('Studio')],
+  // The white room is the default now, so the interesting move is the other way.
+  ['rooms-kitchen', async () => tap('Kitchen')],
   ['rooms-slate', async () => tap('Slate')],
+  ['rooms-studio', async () => tap('Studio')],
   ['camera', async () => tap('#ui #head button:last-of-type')],
   ['camera-portrait', async () => tap('Portrait')],
   ['gallery', async () => { await tap('#shutter'); await tap('.last'); }],

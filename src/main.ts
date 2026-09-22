@@ -18,6 +18,7 @@ import { createConversation, type Conversation } from './talk';
 import { createShotDirector } from './shot';
 import { createStage, type Stage } from './stage';
 import { createToon, type Toon } from './toon';
+import { createGround, type Ground } from './ground';
 import { createPoses } from './poses';
 import { createWardrobe } from './wardrobe';
 import { createCamera } from './photos';
@@ -259,6 +260,7 @@ try {
        the rig is an operator following him around a room, the director puts him
        on a mark. Whichever is not in charge does nothing at all. */
     if (!shots.update(dt)) rig.update(dt);
+    ground.update();
     toon.update();
     uiUpdate(dt);
     renderer.clear();
@@ -280,7 +282,14 @@ try {
      see toon.ts. At `amount: 0` it is exactly the shipped render. */
   const toon = createToon(colin);
 
-  buildTuningPanel(kitchen.manifest.exposure, lightmapped, colin, lights, look, roomExposure, kitchen, resize, wander, rig, face, alive, talk, roomLights, toon);
+  /* Something for him to stand on in an empty room: a light, a shadow map and a
+     plane that is invisible except where the shadow lands. In HIS scene, because
+     the thing casting is him — the room's floor is a photograph and has its own
+     shadows baked into it. */
+  const ground = createGround(renderer, colin);
+  characterScene.add(ground.group);
+
+  buildTuningPanel(kitchen.manifest.exposure, lightmapped, colin, lights, look, roomExposure, kitchen, resize, wander, rig, face, alive, talk, roomLights, toon, ground);
 
   /* The app around the render: which room he is in, what he is wearing, what he
      is doing, and the screens that change each of those. Everything below
@@ -296,7 +305,7 @@ try {
   shots.enableDrag(renderer.domElement);
   stage = createStage({
     renderer, scene, characterScene, room: kitchen.room, roomEnvMap: kitchen.envMap,
-    colin, lights, look, wander, shots,
+    colin, lights, look, wander, shots, ground,
   });
   const ui = createInterface({
     colin, face, alive, wander, talk, stage, shots, toon,
@@ -309,7 +318,7 @@ try {
 
   // Debug handles. From the devtools console: kitchen.interactive.Fridge_Door,
   // kitchen.lightmapped[0].lightMapIntensity, new THREE.Raycaster(), ...
-  Object.assign(window, { renderer, kitchen, colin, wander, rig, face, alive, talk, roomLights, THREE, stage, shots, toon, ui });
+  Object.assign(window, { renderer, kitchen, colin, wander, rig, face, alive, talk, roomLights, THREE, stage, shots, toon, ground, ui });
 
   loading.classList.add('done');
   document.body.classList.add('ready');
@@ -363,6 +372,7 @@ function buildTuningPanel(
   talk: Conversation,
   roomLights: RoomLights,
   toon: Toon,
+  ground: Ground,
 ) {
   const state = {
     exposure,
@@ -391,6 +401,16 @@ function buildTuningPanel(
   toonFolder.addColor(toon.config, 'rimColor').name('rim colour').onChange(retoon);
   toonFolder.add(toon.config, 'outline', 0, 8, 0.1).name('outline px').onChange(retoon);
   toonFolder.addColor(toon.config, 'outlineColor').name('outline colour').onChange(retoon);
+
+  /* The studio floor. Only does anything in a studio — the kitchen's shadows are
+     baked into its lightmaps and a second set over the top is two shadows. */
+  const groundFolder = gui.addFolder('Ground').close();
+  const reground = () => ground.apply();
+  groundFolder.add(ground.config, 'opacity', 0, 0.6, 0.01).name('shadow darkness').onChange(reground);
+  groundFolder.add(ground.config, 'blur', 0.5, 24, 0.5).name('softness (texels)').onChange(reground);
+  groundFolder.add(ground.config, 'elevationDeg', 15, 85, 1).name('sun height').onChange(reground);
+  groundFolder.add(ground.config, 'azimuthDeg', -180, 180, 1).name('sun around').onChange(reground);
+  groundFolder.add(ground.config, 'light', 0, 1, 0.01).name('its own light').onChange(reground);
   gui.add(state, 'exposure', 0.1, 1.5, 0.01)
     .name('exposure')
     .onChange((v: number) => { roomExposure.value = v; });

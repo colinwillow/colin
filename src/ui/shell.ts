@@ -87,6 +87,7 @@ export function createShell(
      the point of the app should not be three taps away. */
   const talk = document.getElementById('talk');
   const mic = document.getElementById('mic');
+  const captions = document.getElementById('captions');
 
   root.append(head, body, tray);
   if (talk) root.append(talk);
@@ -108,12 +109,21 @@ export function createShell(
       /* Two things, held apart: the way back into the app on the left, the
          microphone in the middle where a thumb already is. Nothing is drawn
          behind them — on this screen the room is the background. */
+      /* Three slots, and the outer two are both doors rather than controls: the
+         app on the left, the transcript on the right. The captions chip lives
+         here rather than floating above the text, because with the captions off
+         — which is the default — there is no text for it to float above. */
       fill(tabs,
         button('chip.glass', () => go('home'), icon('grid', 19)),
         ...(mic ? [mic] : []),
-        el('div.chip', { style: 'visibility:hidden' }));
+        ...(captions ? [captions] : [el('div.chip', { style: 'visibility:hidden' })]));
       return;
     }
+    /* Back where it came from. `fill` above empties the dock, so a chip left in
+       it on the last screen would simply cease to exist on this one — moving a
+       node is not the same as copying it, and this is the price of reusing the
+       one the conversation already has its listeners on. */
+    if (captions && talk) talk.insertBefore(captions, document.getElementById('wave'));
     const nodes: Node[] = [];
     for (const tab of TABS) {
       const node = button(`${route === tab.id ? 'on' : ''}`, () => go(tab.id),

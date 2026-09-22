@@ -38,6 +38,10 @@ it. The meter reads your actual voice. And there is a switch that redraws him as
 a cel-shaded drawing, for comparing. See *Him, and nothing else* and *The other
 way he could look*.
 
+**Milestone 5 — an empty white room.** That is what it opens on now: no set, a
+real cast shadow on the floor, and nothing on top of him but three lines that
+move with whoever is talking. The kitchen is one tap away in Rooms.
+
 Still to do: more wearables and more rooms, both of which are Blender exports
 rather than code — and voice commands, which is where this is actually going.
 
@@ -55,6 +59,8 @@ src/wave.ts                     the level meter along the bottom
 src/talk.ts                     the conversation: ears -> brain -> voice -> mouth
 src/listen.ts                   the browser's speech recognition, and when to deafen it
 src/mic.ts                      your voice as audio, for the meter — not the recogniser
+src/audio.ts                    what a sound is doing: level, bands, brightness, onsets
+src/ground.ts                   the studio floor, and the shadow that makes it one
 src/toon.ts                     the other way he could look: bands, a rim, an ink line
 src/brain.ts                    the Worker chat call, streamed
 src/voice.ts                    the ElevenLabs clone: chunking, scheduling, the audio graph
@@ -729,31 +735,79 @@ left the jaw degrees open through an M.
 
 ### The meter along the bottom
 
+**Three lines, one per third of the spectrum**, and each of them is doing four
+things at once:
+
+| | |
+|---|---|
+| amplitude | that third's energy |
+| shape | the eight sub-bands inside it, so the line deforms rather than slides |
+| pitch | tightens with the spectral centroid — bright sounds wiggle faster |
+| speed | kicks on spectral flux, so consonants and plosives land |
+
+The bottom line is the chest of a voice, the middle its body, the top its
+consonants. They are held apart while it is quiet — three lines with nothing to
+say sit on exactly the same path and read as one thick line — and the spread
+closes as the amplitude that distinguishes them takes over. A row of bars was
+the version before this one, and a row of bars is a level display: it can be
+taller or shorter and that is the whole of what it can say. Three lines can
+disagree with each other.
+
 **Both halves are real.** His comes off the analyser the voice already has on the
-way to the speakers. Yours comes off `src/mic.ts` — a second permission, and
-worth it: a sine wave pretending to be your voice is fine as a placeholder and
-obvious the moment you look at it. When the microphone is refused, or the browser
-has none, it falls back to the old behaviour and the recogniser drives it: words
-arriving push it up, silence lets it fall.
+way to the speakers; yours comes off `src/mic.ts`. When the microphone is refused,
+or the browser has none, it falls back to the recogniser: words arriving push it
+up, silence lets it fall, and it looks like the guess it is.
 
-It draws a **spectrum**, not a waveform, and that is the difference between
-looking alive and looking like an oscilloscope. A time-domain trace of speech at
-this size is a fuzzy band — every frame a different squiggle of about the same
-height. The frequency domain moves the way a voice does: vowels sit low and wide,
-consonants flick the top end, and the shape follows what is being said rather
-than where the buffer happened to start.
+#### The floor is the room, and it moves
 
-The bars are spaced **logarithmically**, because the linear bins the FFT hands
-back put everything anyone says in the leftmost eighth of them, and the top end
-is tilted up, because the energy in an "s" is a fraction of the energy in an
-"ah". Warm while he speaks, cool while you do, arched at rest.
+This is the part that actually made it reactive, and it is all in `src/audio.ts`
+— ported from the orb in `colinwillow/glorp`, which has had it right for a while.
 
-Two things keep the microphone out of trouble: it shares the voice's
-`AudioContext` (a page gets a small number of them and iOS suspends them on a
-whim), and it is connected to an analyser and **nothing else** — a live
-microphone wired to the speakers is a feedback loop with a face.
+A meter keyed to a FIXED threshold is wrong in both directions at once. In a
+quiet room the needle sits a quarter of the way up doing nothing, and a normal
+speaking voice — about -30 dBFS at arm's length, a few dB over the ambient — uses
+a sliver of the range. So the floor is measured instead, as **the 20th percentile
+of the last four seconds**.
 
-Tapping the captions hides them; a small chip brings them back.
+A percentile, specifically, rather than a minimum. A minimum tracker is pinned by
+one quiet instant — a gap between two words, a moment of gain riding — and stays
+there. The 20th percentile is the *room*: while nobody is talking that is the
+air, and while somebody is talking it is still the air, because the gaps between
+words are more of the take than the words are. Speech cannot desensitise it and
+one quiet frame cannot deafen it. It is sorted at 10 Hz rather than every frame,
+because the room does not move fast enough to care and a 240-element sort per
+frame on a phone does.
+
+Above that floor, 2 dB of margin rejects the room and 18 dB more reaches full
+scale. Both are small on purpose: against a floor that IS the room, a phone at
+arm's length reads about 6 dB over it, and the large numbers that work against a
+fixed floor throw the entire voice away.
+
+Two consequences worth knowing:
+
+- **The microphone asks for RAW audio** — echo cancellation, noise suppression
+  and automatic gain all off. Every one of the three is a way of flattening
+  exactly the dynamics being drawn, and AGC in particular pushes a whisper and a
+  shout to the same level. What makes raw usable is the moving floor.
+- **Both analysers are read every frame**, whoever is talking. An analyser that
+  is not being drawn still has to keep its history moving, or the floor restarts
+  from nothing at every change of turn and the first second of every sentence is
+  wrong.
+
+### Captions are off until you ask
+
+A conversation is meant to be heard. A running transcript over the top of it
+turns him into a screen with a video on it — the words arrive in his voice, and
+the subtitles are for the times that is not enough. The toggle sits in the dock
+and the choice is remembered; tapping the text puts it away, which is where
+anyone annoyed by it is already looking.
+
+There is **no bubble** behind the words. A panel is a subtitle track; this is him
+talking with a transcript available. The text sits on the room and carries its
+own halo — a tight bright shadow for contrast against anything pale and a wider
+one for anything bright — which is what lets the same treatment work on a white
+sweep and in a dark kitchen.
+
 
 ### Checking it without the network
 
@@ -948,6 +1002,45 @@ with it.
   `localStorage`, and one whose clip has left the export quietly stops existing.
 - **Moods** are the six in `src/mood.ts`, and picking one re-picks his idle
   immediately rather than waiting for the current one to finish.
+
+### An empty white room
+
+**This is what the app opens on.** The kitchen is the better piece of work and is
+one tap away in Rooms, but a plain bright space is the right thing to look at
+while you are talking to somebody: nothing in it competes with him, and it reads
+as a place he is rather than a set he is standing on.
+
+Making it read as a *place* is one thing and one thing only: a shadow on the
+floor that is the shape of him. The blob under his feet is a good cheat against a
+baked kitchen floor, where it only has to say "he is touching the ground". On an
+empty white plane it says "someone has put an oval here".
+
+So `src/ground.ts` is a real one — a light above him, a shadow map, and a plane
+that is invisible except where the shadow lands. `ShadowMaterial` renders nothing
+but the shadow, so the sweep behind it comes through untouched and there is no
+horizon line where the floor ends, which is what makes it an infinite space
+rather than a room with a white wall in it. The sweep barely darkens toward the
+bottom for the same reason: a visible gradient draws a horizon, and the shadow is
+what is supposed to say there is a floor.
+
+Three things that were wrong first:
+
+- **`PCFSoftShadowMap` is a trap in r185.** The shadow-type defines map only PCF
+  and VSM now, so the soft constant falls through to `SHADOWMAP_TYPE_BASIC` — a
+  single hard tap that ignores `radius` entirely. Asking for the softest setting
+  in this version gets you the hardest one. It is `PCFShadowMap` plus a radius,
+  here and in the room-lights experiment, which had the same bug.
+- **`shadowMap.enabled` is a global that two features both wanted.** Each of them
+  switched it off when idle, so they turned each other off. It is enabled once
+  and left alone — a shadow map with nothing casting into it costs nothing — and
+  which lights actually cast is the per-light flag.
+- **The shadow camera follows him**, because it is only 3.2 m across and the
+  quality of a soft shadow is texels per metre. The light is *moved*, not
+  re-aimed, or the shadow would swing around him as he walked.
+
+The blob is not deleted, just turned down to a whisper in a studio: it darkens
+the last centimetre under his soles, which a shadow map at this resolution cannot
+resolve and which is most of what sells contact.
 
 ### The backdrop is also the light
 
