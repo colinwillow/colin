@@ -93,6 +93,7 @@ public/character/
 scripts/screenshot.mjs          optional headless render check (see below)
 scripts/talk-check.mjs          exercises the talking pipeline with the Worker stubbed
 scripts/mic-check.mjs           the push-to-talk path: greeting first, one recogniser start
+scripts/latency-check.mjs       does he start talking before the reply has finished
 scripts/ui-tour.mjs             a PNG of every screen at phone size, and no errors on the way
 ```
 
@@ -795,6 +796,39 @@ Two consequences worth knowing:
   from nothing at every change of turn and the first second of every sentence is
   wrong.
 
+### He starts talking before he has finished thinking
+
+The pause before a reply used to be three waits end to end: the model thinking,
+the model *finishing*, and then the voice rendering. The first sentence of a
+two-sentence answer exists a long time before the second one does, and there is
+nothing to be gained by sitting on it.
+
+`voice.open()` returns a handle that can be pushed to while the reply is still
+streaming; `talk.ts` cuts the stream at each finished sentence and hands it over,
+so the rendering of the first overlaps the writing of the rest. One consumer loop
+renders the queue in order, and that is not incidental — each request is
+conditioned on the text before and after it, which is what keeps the prosody
+continuous across a seam.
+
+**The seam has to include the end of what has arrived so far**, and that one
+character is the whole feature. Requiring whitespace after the full stop sounds
+right and is wrong for a stream: the space belongs to the *next* token, so a
+finished sentence does not look finished until the model has started writing the
+one after it — which is exactly the wait being removed. Measured against a Worker
+that pauses a second between sentences, requiring the space gave up the entire
+second. `scripts/latency-check.mjs` is that measurement, and it failed the first
+version of this.
+
+Each turn logs where its time actually went:
+
+```
+turn — first word 380ms · first sentence sent 910ms · talking 1620ms · reply written 2240ms
+```
+
+`talking` is the one you feel. Everything left in it is the model's time to first
+token plus one voice render, and neither of those is the page's to shorten — the
+levers for those are in the Worker.
+
 ### Captions are off until you ask
 
 A conversation is meant to be heard. A running transcript over the top of it
@@ -822,7 +856,8 @@ the timeline, and whether the mouth on the real head moves.
 npm i -D playwright && npx playwright install chromium   # not a project dependency
 npm run build && npx vite preview --port 4173 &
 npm run talk-check -- http://127.0.0.1:4173/
-npm run mic-check -- http://127.0.0.1:4173/    # the push-to-talk path
+npm run mic-check -- http://127.0.0.1:4173/        # the push-to-talk path
+npm run latency-check -- http://127.0.0.1:4173/    # does he start before the reply ends
 ```
 
 It stops the render loop before it samples: software WebGL draws about one frame
@@ -908,6 +943,13 @@ they want to be talked to. **Just look around** skips the lot.
 roughness, emission, environment, saturation, and how bright the backdrop is —
 with him standing there while you drag.
 
+The defaults are **not neutral ones**. They were dialled in on a phone, on the
+Paper backdrop, and then written into `DEFAULT_LOOK`: nearly three times the key
+light, half again the fill, and a surface a good deal less matte than the scene
+table's. That table was tuned against a dark baked kitchen where he needed almost
+none of this, and standing on a pale sweep is a different problem. *Reset* means
+back to those, not back to whatever number happens to be in the GLB.
+
 **The room sets the baseline and this sets the taste.** That distinction is the
 whole design. `stage.ts` writes exposure, emission, environment and the three
 light intensities on every change of room, because a baked kitchen and a white
@@ -931,6 +973,27 @@ Two implementation notes:
 Nothing in a slider's `input` handler rebuilds the screen, which sounds obvious
 and is the bug that got written first: refreshing the tray from inside a drag
 replaces the element the thumb is on, and the drag ends on the frame it started.
+
+## Black, cream and beige
+
+The interface has no fourth colour. Everything selected used to be blue, and
+against a warm sweep that reads as a control panel bolted onto a photograph — so
+selection is now weight and a darker edge rather than a hue, which is how print
+does it and what leaves the palette alone. The microphone is a cream pill when it
+is off and solid ink when it is on; there is no accent colour anywhere.
+
+The surfaces are **semi-opaque with very little blur**, which is a different thing
+from the frosted glass they were: closer to waxed paper — you can tell there is a
+room behind them without being able to read it. The alpha is still the contrast
+budget, so there is a floor under how far that can go before dark text on the
+Slate backdrop stops working.
+
+The meter is the same three colours, and that is practical as much as
+aesthetic: **the ink line survives anything pale, the cream one survives anything
+dark, and the beige sits between them.** No backdrop in the table can hide all
+three. Whose turn it is comes through as temperature rather than hue — yours
+neutral, his warm — and the glow behind the lines is paper-coloured rather than
+coloured, so it reads as legibility rather than as neon.
 
 ## The other way he could look
 
@@ -1034,12 +1097,14 @@ with it.
 - **Moods** are the six in `src/mood.ts`, and picking one re-picks his idle
   immediately rather than waiting for the current one to finish.
 
-### An empty white room
+### An empty warm room
 
-**This is what the app opens on.** The kitchen is the better piece of work and is
-one tap away in Rooms, but a plain bright space is the right thing to look at
-while you are talking to somebody: nothing in it competes with him, and it reads
-as a place he is rather than a set he is standing on.
+**This is what the app opens on** — Paper, a warm off-white sweep. The kitchen is
+the better piece of work and is one tap away in Rooms, but a plain bright space
+is the right thing to look at while you are talking to somebody: nothing in it
+competes with him, and it reads as a place he is rather than a set he is standing
+on. Warm rather than white because skin on a cold white sweep goes grey, and
+because the entire interface is now built out of the colours in it.
 
 Making it read as a *place* is one thing and one thing only: a shadow on the
 floor that is the shape of him. The blob under his feet is a good cheat against a

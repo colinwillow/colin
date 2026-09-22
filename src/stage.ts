@@ -101,19 +101,22 @@ const studio = (
   ...over,
 });
 
-/* The white room is FIRST and is what the app opens on. The kitchen is the
-   better piece of work and is still one tap away, but a plain bright space with
-   a shadow on the floor is the right thing to look at while you are talking to
-   somebody: nothing in it competes with him, and it reads as a place he is
-   rather than a set he is standing on. */
+/* PAPER IS FIRST and is what the app opens on. The kitchen is the better piece
+   of work and is still one tap away, but a plain warm space is the right thing
+   to look at while you are talking to somebody: nothing in it competes with him,
+   and it reads as a place he is rather than a set he is standing on. Warm rather
+   than white because skin on a cold white sweep goes grey, and because the whole
+   interface is built out of the colours in it. */
 export const SCENES: StageScene[] = [
-  studio('white', 'Studio', 'An empty white room with a floor.', '#f7f6f4', {
+  studio('paper', 'Paper', 'Warm off-white. Softer on skin than white.', '#e8e0d3', {
     // Barely any sweep at all. A visible gradient behind him is a wall, and the
     // thing being aimed at here is a space with no back to it.
+    backdrop: { color: '#e8e0d3', lift: 0.07 },
+  }),
+  studio('white', 'Studio', 'An empty white room with a floor.', '#f7f6f4', {
     backdrop: { color: '#f7f6f4', lift: 0.07 },
   }),
   KITCHEN,
-  studio('paper', 'Paper', 'Warm off-white, softer on skin.', '#e8e0d3'),
   studio('slate', 'Slate', 'Dark and moody. The rim light earns its keep.', '#2a2d33', {
     exposure: 0.72, lights: { key: 1.1, fill: 0.4, rim: 1.8 }, shadow: 0.55,
   }),

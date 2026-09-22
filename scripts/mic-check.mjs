@@ -63,7 +63,12 @@ await page.addInitScript(() => {
       const text = JSON.parse(init.body).text;
       const chars = [...text], starts = [], ends = [];
       let t = 0;
-      for (const c of chars) { const d = 0.03; starts.push(t); ends.push(t + d); t += d; }
+      /* Long enough that the shortest greeting in the set still outlasts the
+         check below. At 0.03 s a character, "Yeah? What." is a third of a
+         second of audio — it finishes, hands the microphone over, and the
+         "starts so far" reading catches the recogniser already running. The
+         shortest line is eleven characters, so this is about a second. */
+      for (const c of chars) { const d = 0.09; starts.push(t); ends.push(t + d); t += d; }
       // What was spoken, and whether the mic was already open when it was.
       window.__spoke = (window.__spoke || []).concat({ text, earsOpen: window.talk?.ears?.listening ?? null });
       return new Response(JSON.stringify({ audio_base64: b64(wav(t)),
@@ -87,7 +92,7 @@ console.log('mic enabled:', await mic.isEnabled(), '| label:', (await mic.textCo
    out of that one tap — so the first press is made there rather than reaching
    past it to the button underneath. */
 await page.locator('#intro button.action').click();
-await page.waitForTimeout(400);
+await page.waitForTimeout(150);
 await page.waitForFunction(() => (window.__spoke || []).length > 0, null, { timeout: 10000 });
 const atGreeting = await page.evaluate(() => ({
   spoke: window.__spoke[0], starts: window.__starts, earsOpen: window.talk.ears.listening,

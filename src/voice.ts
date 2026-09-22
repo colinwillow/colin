@@ -33,6 +33,25 @@ interface Piece { audio: AudioBuffer; marks: Alignment | null }
  *  purely text-driven mouth keeps shaping through them. */
 const GATE = 0.06;
 
+/**
+ * A reply being spoken while it is still being written.
+ *
+ * THE POINT OF THIS IS THE PAUSE BEFORE HE ANSWERS. Waiting for the whole reply
+ * before sending any of it to be spoken stacks three waits end to end: the model
+ * thinking, the model finishing, and then the voice rendering. The first sentence
+ * of a two-sentence answer exists a long time before the second one does, and
+ * there is nothing to be gained by sitting on it — pushed the moment it is
+ * complete, its rendering overlaps the writing of everything after it.
+ */
+export interface Speech {
+  /** Say this next. Rendered and queued in order; safe to call at any time. */
+  push: (text: string) => void;
+  /** Nothing more is coming. `onEnd` fires once what is queued has played. */
+  close: () => void;
+  /** True once the first sample is scheduled, false if nothing could be said. */
+  started: Promise<boolean>;
+}
+
 export interface Voice {
   /** True from the moment the first sample is scheduled until the last ends. */
   readonly speaking: boolean;
@@ -40,8 +59,11 @@ export interface Voice {
   update: () => void;
   /** The mouth shape right now. */
   shape: () => Shape;
-  /** Render and play. Resolves true once he has STARTED talking, not finished. */
+  /** Render and play a finished reply. Resolves true once he has STARTED
+   *  talking, not finished. Shorthand for `open` / `push` / `close`. */
   speak: (text: string) => Promise<boolean>;
+  /** Start a reply that is still arriving. */
+  open: () => Speech;
   /** Cut him off. */
   stop: () => void;
   /** Build or wake the AudioContext. Must be called from a user gesture. */
@@ -92,7 +114,7 @@ export function createVoice(endpoint: string, persona?: string): Voice {
        "armed but between sentences" indistinguishable from "no audio at all". */
     get analyser() { return analyser; },
     get context() { return ctx; },
-    update, shape, speak, stop, arm, volume: 1,
+    update, shape, speak, open, stop, arm, volume: 1,
   };
 
   async function arm() {
@@ -198,25 +220,41 @@ export function createVoice(endpoint: string, persona?: string): Voice {
     seq = [];
   }
 
-  async function speak(text: string): Promise<boolean> {
-    const parts = split(text);
-    if (!parts.length) return false;
-    await arm();
-    if (!ctx || !analyser) return false;
-
-    let first: Piece;
-    try {
-      first = await render(parts[0], '', parts[1] ?? '');
-    } catch (err) {
-      console.warn('voice:', err);
-      return false;
-    }
-
+  /**
+   * Start saying something, a piece at a time.
+   *
+   * One consumer loop renders the queue IN ORDER, and that is not an accident:
+   * each request is conditioned on the text before and after it (see `render`),
+   * which is what keeps the prosody continuous across a seam, and rendering two
+   * at once would land them in the wrong order as often as not.
+   */
+  function open(): Speech {
     stop();
     const mine = ++generation;
+    if (!ctx || !analyser) {
+      // Not armed. Nothing can be said, and saying so is better than queueing
+      // into a context that does not exist.
+      return { push: () => {}, close: () => {}, started: Promise.resolve(false) };
+    }
+
     const t0 = ctx.currentTime + 0.05;
     let at = t0;
-    let placed = 0, ended = 0, expected = parts.length;
+    let placed = 0;
+    let ended = 0;
+    /** Unknown until the queue is closed AND drained: a piece that finishes
+     *  while more is still being written must not be the last one. */
+    let expected = Infinity;
+
+    const pending: string[] = [];
+    let closed = false;
+    let draining = false;
+    /** What he has already said, for conditioning the next request. */
+    let said = '';
+
+    let settle: (ok: boolean) => void;
+    const started = new Promise<boolean>((resolve) => { settle = resolve; });
+    let answered = false;
+    const answer = (ok: boolean) => { if (!answered) { answered = true; settle(ok); } };
 
     /* Only the clip actually playing gets to say the talking has stopped.
        Interrupting one fires the OLD source's onended, which would hand the
@@ -228,7 +266,7 @@ export function createVoice(endpoint: string, persona?: string): Voice {
     };
     const onEnd = () => { if (mine === generation && ++ended >= expected) finish(); };
 
-    const place = (piece: Piece) => {
+    const place = (piece: Piece, text: string) => {
       const src = ctx!.createBufferSource();
       src.buffer = piece.audio;
       src.connect(analyser!);
@@ -241,46 +279,80 @@ export function createVoice(endpoint: string, persona?: string): Voice {
       src.onended = onEnd;
       src.start(when);
       sources.push(src);
-      if (piece.marks) {
-        const spans = timelineFromMarks(piece.marks, when - t0);
-        seq = placed > 0 ? seq.concat(spans) : spans;
-      }
+      /* Without marks the timeline is a guess from the text and the duration.
+         Per piece rather than for the whole reply, because with a streamed reply
+         there is no whole reply to measure against yet. */
+      const spans = piece.marks
+        ? timelineFromMarks(piece.marks, when - t0)
+        : timelineFromText(text, piece.audio.duration).map(
+          (span) => ({ ...span, t0: span.t0 + (when - t0), t1: span.t1 + (when - t0) }));
+      seq = placed > 0 ? seq.concat(spans) : spans;
       placed++;
       at = when + piece.audio.duration;
+
+      if (placed === 1) {
+        if (gain) gain.gain.value = api.volume;
+        playing = true;
+        /* THE CLOCK STARTS HERE, not when the timeline was built. Decoding,
+           wiring the graph and the gain ramp all happen before the first sample
+           is heard, and a mouth stamped at build time runs that much ahead of
+           the voice. */
+        startedAt = performance.now() + (t0 - ctx!.currentTime) * 1000;
+        answer(true);
+      }
     };
 
-    place(first);
-    // Without marks the timeline is a guess from the text and a duration, and
-    // only the first piece's duration is known yet — so scale it by how much of
-    // the reply that piece was.
-    if (!first.marks) {
-      seq = timelineFromText(text, first.audio.duration * (text.length / (parts[0].length || 1)));
-    }
-    if (gain) gain.gain.value = api.volume;
-    playing = true;
-    /* THE CLOCK STARTS HERE, not when the timeline was built. Decoding, wiring
-       the graph and the gain ramp all happen before the first sample is heard,
-       and a mouth stamped at build time runs that much ahead of the voice. */
-    startedAt = performance.now() + (t0 - ctx.currentTime) * 1000;
-
-    // The rest, in flight while the first is already being heard. Deliberately
-    // not awaited: this promise means "he has started talking".
-    void (async () => {
-      for (let k = 1; k < parts.length; k++) {
+    const drain = async () => {
+      if (draining) return;
+      draining = true;
+      while (pending.length) {
+        const text = pending.shift()!;
         let piece: Piece;
         try {
-          piece = await render(parts[k], parts.slice(0, k).join(' '), parts[k + 1] ?? '');
+          piece = await render(text, said, pending[0] ?? '');
         } catch (err) {
-          console.warn(`voice: piece ${k + 1} of ${parts.length} failed —`, err);
-          expected = placed;
-          if (ended >= expected) finish();
-          return;
+          console.warn(`voice: piece ${placed + 1} failed —`, err);
+          // Give up on the rest: a failed piece mid-reply is a hole, and the
+          // ones after it would be conditioned on text he never said.
+          pending.length = 0;
+          closed = true;
+          break;
         }
-        if (mine !== generation) return;      // hushed, or a newer reply took over
-        place(piece);
+        if (mine !== generation) { draining = false; return; }
+        said = `${said} ${text}`.trim();
+        place(piece, text);
       }
-    })();
-    return true;
+      draining = false;
+      if (closed) {
+        expected = placed;
+        if (!placed) answer(false);
+        else if (ended >= expected) finish();
+      }
+    };
+
+    return {
+      push: (text) => {
+        if (closed || mine !== generation) return;
+        for (const part of split(text)) pending.push(part);
+        void drain();
+      },
+      close: () => {
+        if (closed) return;
+        closed = true;
+        // Already idle: settle up now. Otherwise the drain loop does it when it
+        // runs out of work.
+        if (!draining) void drain();
+      },
+      started,
+    };
+  }
+
+  async function speak(text: string): Promise<boolean> {
+    await arm();
+    const speech = open();
+    speech.push(text);
+    speech.close();
+    return speech.started;
   }
 
   return api;

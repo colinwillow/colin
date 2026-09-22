@@ -50,21 +50,29 @@ body.ready #ui { opacity: 1; }
 }
 
 :root {
-  --ink: #16130f;
-  --ink-soft: #6d675f;
-  --ink-faint: #a29a90;
-  /* Nearly opaque, and that is the readability budget rather than a taste
-     call: these sit over a scene that can be a white sweep or a black one, and
-     anything much more transparent turns dark text on a dark backdrop into
-     nothing at all. The blur is the effect; the alpha is the contrast. */
-  --surface: rgba(252, 251, 249, 0.93);
-  --surface-solid: #f4f2ee;
-  --edge: rgba(22, 19, 15, 0.09);
-  --edge-strong: rgba(22, 19, 15, 0.16);
-  --accent: #16130f;
-  --selected: #e8f0ff;
-  --selected-edge: #2f6bff;
-  --shadow: 0 10px 30px rgba(20, 16, 12, 0.18), 0 2px 6px rgba(20, 16, 12, 0.08);
+  /* BLACK, CREAM AND BEIGE, and nothing else. The room he stands in is a warm
+     off-white sweep, and an interface in a fourth colour — the blue this used to
+     use for everything selected — reads as a control panel bolted onto a
+     photograph. Selection is now weight and a darker edge rather than a hue,
+     which is how print does it and what leaves the palette alone. */
+  --ink: #1e1811;
+  --ink-soft: #776a58;
+  --ink-faint: #a2937c;
+  --cream: #faf5ea;
+  /* Semi-opaque rather than nearly opaque, with much less blur behind it: the
+     old pair read as glass, and the thing being aimed at is closer to waxed
+     paper — you can tell there is a room behind it without being able to read
+     the room. The alpha is still the contrast budget, so there is a floor under
+     how far this can go before dark text on a dark backdrop stops working. */
+  --surface: rgba(248, 243, 233, 0.82);
+  --surface-solid: #f2ecdf;
+  --card: #f7f2e7;
+  --edge: rgba(30, 24, 17, 0.12);
+  --edge-strong: rgba(30, 24, 17, 0.2);
+  --accent: #1e1811;
+  --selected: rgba(30, 24, 17, 0.07);
+  --selected-edge: #1e1811;
+  --shadow: 0 10px 28px rgba(58, 44, 28, 0.15), 0 2px 5px rgba(58, 44, 28, 0.08);
   --radius: 20px;
   --gutter: 16px;
   --top: calc(env(safe-area-inset-top) + 12px);
@@ -81,8 +89,8 @@ body.ready #ui { opacity: 1; }
 @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
   .glass {
     background: var(--surface);
-    -webkit-backdrop-filter: blur(22px) saturate(1.5);
-    backdrop-filter: blur(22px) saturate(1.5);
+    -webkit-backdrop-filter: blur(11px) saturate(1.12);
+    backdrop-filter: blur(11px) saturate(1.12);
   }
 }
 
@@ -102,7 +110,7 @@ body.ready #ui { opacity: 1; }
 /* The only text in the interface with nothing behind it, so it carries its own
    background: a soft light halo that is invisible over a pale room and is the
    only reason it can be read over a dark one. */
-#head .title, #head .sub { text-shadow: 0 1px 12px rgba(250, 248, 244, 0.9), 0 0 3px rgba(250, 248, 244, 0.8); }
+#head .title, #head .sub { text-shadow: 0 1px 12px rgba(250, 245, 234, 0.92), 0 0 3px rgba(250, 245, 234, 0.85); }
 #head .title {
   font-size: 17px;
   font-weight: 600;
@@ -214,7 +222,7 @@ body.ready #ui { opacity: 1; }
   display: grid;
   place-items: center;
   color: var(--ink-soft);
-  background: linear-gradient(160deg, #ffffff, #e7e3dc);
+  background: linear-gradient(160deg, #fdfaf2, #e6dcc9);
 }
 .tile .label {
   font-size: 10.5px;
@@ -239,7 +247,7 @@ body.ready #ui { opacity: 1; }
   display: grid;
   place-items: center;
   background: var(--accent);
-  color: #fbf9f6;
+  color: var(--cream);
   box-shadow: 0 2px 6px rgba(20, 16, 12, 0.3);
 }
 .tile { position: relative; }
@@ -302,7 +310,7 @@ body.ready #ui { opacity: 1; }
   margin-top: -7px;
   border-radius: 999px;
   background: var(--accent);
-  border: 2px solid #fbf9f6;
+  border: 2px solid var(--cream);
   box-shadow: 0 2px 6px rgba(20, 16, 12, 0.32);
 }
 .slider input[type="range"]::-moz-range-thumb {
@@ -310,7 +318,7 @@ body.ready #ui { opacity: 1; }
   height: 18px;
   border-radius: 999px;
   background: var(--accent);
-  border: 2px solid #fbf9f6;
+  border: 2px solid var(--cream);
   box-shadow: 0 2px 6px rgba(20, 16, 12, 0.32);
 }
 
@@ -332,7 +340,7 @@ body.ready #ui { opacity: 1; }
   padding: 15px 20px;
   border-radius: 17px;
   background: var(--accent);
-  color: #fbf9f6;
+  color: var(--cream);
   font-size: 15px;
   font-weight: 600;
   letter-spacing: -0.01em;
@@ -368,7 +376,7 @@ body.ready #ui { opacity: 1; }
   color: var(--ink-soft);
   white-space: nowrap;
 }
-.segments button.on { background: var(--accent); color: #fbf9f6; font-weight: 600; }
+.segments button.on { background: var(--accent); color: var(--cream); font-weight: 600; }
 
 /* ---------------- the tab bar ---------------- */
 
@@ -433,24 +441,28 @@ body.ready #ui { opacity: 1; }
   padding: 13px 18px;
   margin: 0 4px 2px;
   border-radius: 999px;
-  background: var(--accent);
-  color: #fbf9f6;
+  background: var(--surface-solid);
+  color: var(--ink);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  border: 0;
-  box-shadow: 0 6px 18px rgba(20, 16, 12, 0.25);
+  border: 1px solid var(--edge-strong);
+  box-shadow: var(--shadow);
   transition: transform 0.12s ease, background 0.2s ease, color 0.2s ease;
 }
 #ui #mic:active { transform: scale(0.96); }
 #ui #mic:disabled { opacity: 0.4; }
-#ui #mic.on { background: #2f6bff; color: #fff; }
+/* Off: a cream pill with a hairline, so it reads as a control rather than as
+   the loudest thing on the screen. On: solid ink. Busy — thinking, or talking
+   back — cream again with an ink ring, which is the same button saying it is
+   still armed without shouting about it. */
+#ui #mic.on { background: var(--accent); color: var(--cream); }
 /* Armed but not listening this second — he is thinking, or talking back. */
 #ui #mic.on.busy {
   background: var(--surface-solid);
-  color: var(--selected-edge);
-  box-shadow: inset 0 0 0 1.5px var(--selected-edge);
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1.5px var(--ink);
 }
 
 /* ---------------- captions and the level meter ---------------- */
@@ -484,9 +496,9 @@ body.ready #talk { opacity: 1; }
   min-height: 0;
   cursor: pointer;
   text-shadow:
-    0 0 6px rgba(252, 251, 249, 0.95),
-    0 0 18px rgba(252, 251, 249, 0.8),
-    0 1px 2px rgba(252, 251, 249, 0.9);
+    0 0 6px rgba(250, 245, 234, 0.96),
+    0 0 18px rgba(250, 245, 234, 0.82),
+    0 1px 2px rgba(250, 245, 234, 0.92);
 }
 #say:empty { display: none; }
 #say.off { display: none; }
@@ -585,7 +597,7 @@ body.ready #talk { opacity: 1; }
   animation: rise 0.26s cubic-bezier(0.2, 0.9, 0.3, 1);
 }
 @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
-  .cover { background: rgba(244, 242, 238, 0.94); -webkit-backdrop-filter: blur(30px); backdrop-filter: blur(30px); }
+  .cover { background: rgba(242, 236, 223, 0.94); -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px); }
 }
 /* The camera screen is the exception: it is a viewfinder, so it stays out of the
    way and goes dark so the picture is the only bright thing. */
@@ -650,7 +662,7 @@ body.ready #talk { opacity: 1; }
   padding: 12px 14px;
   margin-bottom: 10px;
   border-radius: var(--radius);
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--edge);
   transition: transform 0.12s ease;
 }
@@ -736,7 +748,7 @@ body.ready #talk { opacity: 1; }
   width: 40px;
   height: 40px;
   border-radius: 999px;
-  background: #d9d2c8 center/cover;
+  background: #ddd2bd center/cover;
   border: 1px solid var(--edge);
   flex: 0 0 auto;
 }
@@ -753,7 +765,7 @@ body.ready #talk { opacity: 1; }
   aspect-ratio: 3 / 4;
   border-radius: 12px;
   overflow: hidden;
-  background: #e2ded7 center/cover;
+  background: #e6ddcc center/cover;
   border: 1px solid var(--edge);
 }
 .shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -838,7 +850,7 @@ body.ready #talk { opacity: 1; }
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.65);
 }
-.viewfinder .modes button.on { color: #16130f; background: #fff; }
+.viewfinder .modes button.on { color: var(--ink); background: var(--cream); }
 .viewfinder > header .chip { background: rgba(0, 0, 0, 0.35); border-color: rgba(255, 255, 255, 0.2); color: #fff; }
 .viewfinder .spring { flex: 1; }
 .viewfinder .controls .chip { background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.2); color: #fff; }
@@ -865,8 +877,8 @@ body.ready #talk { opacity: 1; }
   z-index: 7;
   padding: 9px 15px;
   border-radius: 13px;
-  background: rgba(22, 19, 15, 0.9);
-  color: #f7f4ef;
+  background: rgba(30, 24, 17, 0.92);
+  color: var(--cream);
   font-size: 13px;
   font-weight: 500;
   white-space: nowrap;

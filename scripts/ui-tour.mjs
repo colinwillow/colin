@@ -78,9 +78,10 @@ const steps = [
   ['look-surface', async () => tap('Surface')],
   ['rooms', async () => { await tap('.chip'); await tap('Rooms'); }],
   // The white room is the default now, so the interesting move is the other way.
+  ['rooms-white', async () => tap('Studio')],
   ['rooms-kitchen', async () => tap('Kitchen')],
   ['rooms-slate', async () => tap('Slate')],
-  ['rooms-studio', async () => tap('Studio')],
+  ['rooms-paper', async () => tap('Paper')],
   ['camera', async () => tap('#ui #head button:last-of-type')],
   ['camera-portrait', async () => tap('Portrait')],
   ['gallery', async () => { await tap('#shutter'); await tap('.last'); }],

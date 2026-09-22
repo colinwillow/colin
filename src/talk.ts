@@ -150,6 +150,33 @@ export function createConversation(opts: TalkOptions): Conversation {
     if (mic && listening) mic.textContent = yes ? 'his turn' : 'listening';
   };
 
+  /**
+   * Where a reply can be cut so that the first half can start being spoken.
+   *
+   * OR THE END OF WHAT HAS ARRIVED SO FAR, and that `$` is the whole feature.
+   * Requiring whitespace after the full stop sounds right and is wrong for a
+   * stream: the space belongs to the NEXT token, so a finished sentence does not
+   * look finished until the model has started writing the one after it — which
+   * is exactly the wait this exists to remove. Measured against a stubbed Worker
+   * that pauses a second between sentences, requiring the space gave up the
+   * entire second.
+   */
+  const SENTENCE_END = /[.!?…]["')\]]*(?:\s|$)/g;
+
+  /** The end of the last complete sentence in `text` at or after `from`, or -1. */
+  const lastSeam = (text: string, from: number) => {
+    SENTENCE_END.lastIndex = from;
+    let cut = -1;
+    for (let m = SENTENCE_END.exec(text); m; m = SENTENCE_END.exec(text)) {
+      /* "3.5" and "J. Smith" are not the end of anything. Only a bare full stop
+         is ambiguous this way — nobody writes 3!5. */
+      const before = text[m.index - 1] ?? '';
+      if (m[0][0] === '.' && /[0-9A-Z]/.test(before)) continue;
+      cut = m.index + m[0].length;
+    }
+    return cut;
+  };
+
   const answer = async (heard: string) => {
     if (brain.busy) return;
     ears.mute();
@@ -158,15 +185,56 @@ export function createConversation(opts: TalkOptions): Conversation {
     // as considering rather than as nothing happening.
     alive?.express('thinking', 30);
     caption(heard, '…');
+
+    /* HE STARTS TALKING BEFORE THE REPLY IS FINISHED, and that is most of what
+       used to be the pause. Waiting for the whole answer put three waits end to
+       end — the model thinking, the model finishing, and the voice rendering —
+       when the first sentence of a two-sentence answer exists a long time before
+       the second one does. Pushed the moment it is complete, its rendering
+       overlaps the writing of the rest. */
+    await voice.arm();
+    const speech = voice.open();
+    let sent = 0;
+    const asked = performance.now();
+    let firstToken = 0;
+    let firstSpoken = 0;
+    /* Stamped from inside the promise rather than where it is awaited. He starts
+       talking while the reply is still being written, so anything measured after
+       `brain.ask` returns is measuring the writing, not the wait. */
+    let firstAudio = 0;
+    void speech.started.then((ok) => { if (ok) firstAudio = performance.now() - asked; });
+
     let reply = '';
     try {
-      reply = await brain.ask(heard, (soFar) => caption(heard, soFar));
+      reply = await brain.ask(heard, (soFar) => {
+        if (!firstToken) firstToken = performance.now() - asked;
+        caption(heard, soFar);
+        const cut = lastSeam(soFar, sent);
+        /* Not every seam: a two-word sentence rendered on its own is a request
+           whose overhead is longer than the audio it returns, and a string of
+           them makes the seams audible. Below this, wait for the next one. */
+        if (cut > sent && cut - sent >= 24) {
+          if (!firstSpoken) firstSpoken = performance.now() - asked;
+          speech.push(soFar.slice(sent, cut));
+          sent = cut;
+        }
+      });
     } catch (err) {
+      speech.close();
       caption(heard, `(${err instanceof Error ? err.message : String(err)})`);
       engage(false);
       ears.unmute();
       return;
     }
+
+    const written = performance.now() - asked;
+    const tail = reply.slice(sent).trim();
+    if (tail) {
+      if (!firstSpoken) firstSpoken = performance.now() - asked;
+      speech.push(tail);
+    }
+    speech.close();
+
     if (!reply) { engage(false); ears.unmute(); return; }
 
     /* What the exchange did to him. Read off both halves — what you said and
@@ -179,7 +247,15 @@ export function createConversation(opts: TalkOptions): Conversation {
     // People blink as they start to speak, near enough always.
     alive?.express('neutral', 0);
     alive?.blinkNow();
-    const started = await voice.speak(reply);
+
+    const started = await speech.started;
+    /* Where the wait actually went, because "he takes a while" is four different
+       numbers and only one of them is ours to do anything about. `talking` is
+       the one you feel; everything before it is the model and the voice. */
+    console.log(`turn — first word ${Math.round(firstToken)}ms · `
+      + `first sentence sent ${Math.round(firstSpoken)}ms · `
+      + `talking ${Math.round(firstAudio)}ms · `
+      + `reply written ${Math.round(written)}ms`);
     if (!started) {
       // No voice — the text is still the answer, so leave it on screen.
       engage(false);

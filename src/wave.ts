@@ -35,12 +35,27 @@ interface Palette {
   glow: string;
 }
 
-/** Warm when he talks, cool when you do, and grey when neither. Chosen to read
- *  on a white sweep, which is what he now stands on by default. */
+/**
+ * Ink, beige and cream — the same three the interface is built from.
+ *
+ * THREE COLOURS THAT COVER EVERY BACKDROP, which is the practical reason as much
+ * as the aesthetic one: the ink line survives anything pale, the cream one
+ * survives anything dark, and the beige sits between them. There is no backdrop
+ * in the table that can hide all three.
+ *
+ * Whose turn it is comes through as temperature rather than as a different hue.
+ * Yours is neutral — near-black, stone, chalk. His is warm — a deep brown, an
+ * ochre and a warm white — so the row shifts perceptibly without either of them
+ * leaving the palette. The middle line of each is darker than it looks like it
+ * should be, because "beige" and "the beige backdrop" are the same value and a
+ * line the colour of what is behind it is not a line. The glow is a PAPER-coloured halo rather than a coloured
+ * one: it is there so a dark line stays legible where it crosses him, not to
+ * make the thing look lit.
+ */
 const COLOURS: Record<WaveMode, Palette> = {
-  idle: { lines: ['rgba(120,112,103,0.40)', 'rgba(120,112,103,0.30)', 'rgba(120,112,103,0.22)'], glow: 'rgba(0,0,0,0)' },
-  listening: { lines: ['#1d7fa6', '#2fb3c4', '#6fe0cf'], glow: 'rgba(47,179,196,0.55)' },
-  speaking: { lines: ['#c2762e', '#e0a04a', '#f2cd7c'], glow: 'rgba(224,160,74,0.55)' },
+  idle: { lines: ['rgba(30,24,17,0.34)', 'rgba(30,24,17,0.24)', 'rgba(30,24,17,0.16)'], glow: 'rgba(0,0,0,0)' },
+  listening: { lines: ['#1e1811', '#6a5d4c', '#fbf7ee'], glow: 'rgba(250,245,234,0.85)' },
+  speaking: { lines: ['#3a2612', '#8d6835', '#fff8e9'], glow: 'rgba(255,248,233,0.85)' },
 };
 
 export interface WaveSources {
@@ -65,11 +80,13 @@ const BANDS = LINES * PER_LINE;
 const STEPS = 72;
 const TAU = Math.PI * 2;
 
-/** How each line behaves. Low and slow at the bottom, quick and thin on top. */
+/** How each line behaves. Low and slow at the bottom, quick and thin on top.
+ *  The weights are pen widths rather than highlighter widths: the look being
+ *  aimed at is drawn, and a 2.4px line with a coloured glow behind it is neon. */
 const SHAPE = [
-  { cycles: 1.5, speed: 0.55, weight: 2.4, reach: 1.0 },
-  { cycles: 2.6, speed: 0.95, weight: 1.7, reach: 0.82 },
-  { cycles: 4.1, speed: 1.55, weight: 1.2, reach: 0.64 },
+  { cycles: 1.5, speed: 0.55, weight: 1.9, reach: 1.0 },
+  { cycles: 2.6, speed: 0.95, weight: 1.35, reach: 0.82 },
+  { cycles: 4.1, speed: 1.55, weight: 1.0, reach: 0.64 },
 ];
 
 export function createWave(canvas: HTMLCanvasElement, sources: WaveSources): Wave {
@@ -192,7 +209,9 @@ export function createWave(canvas: HTMLCanvasElement, sources: WaveSources): Wav
       }
       ctx.strokeStyle = palette.lines[line];
       ctx.lineWidth = shape.weight * dpr;
-      ctx.shadowBlur = (mode === 'idle' ? 0 : 7 + shownLevel * 9) * dpr;
+      // Small and paper-coloured: enough to keep a dark line off a dark jacket,
+      // not enough to read as a light source.
+      ctx.shadowBlur = (mode === 'idle' ? 0 : 4) * dpr;
       ctx.stroke();
     }
     ctx.shadowBlur = 0;

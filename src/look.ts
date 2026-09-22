@@ -37,16 +37,22 @@ export interface LookConfig {
   backdrop: number;
 }
 
+/* DIALLED IN ON A PHONE, ON THE PAPER BACKDROP, AND THEN WRITTEN DOWN. Not a
+   set of neutral ones: the neutral version of this is what the scene table says,
+   and the scene table was tuned against a dark baked kitchen where he needed
+   almost none of this. Standing on a pale sweep he wants nearly three times the
+   key, half again the fill, and a surface that is a good deal less matte than a
+   room with no direct light in it ever showed. */
 export const DEFAULT_LOOK: LookConfig = {
-  brightness: 1,
-  emission: 1,
-  environment: 1,
-  roughness: 0.75,
-  saturation: 1,
-  key: 1,
-  fill: 1,
-  rim: 1,
-  backdrop: 1,
+  brightness: 1.2,
+  emission: 1.26,
+  environment: 1.1,
+  roughness: 0.61,
+  saturation: 1.1,
+  key: 2.68,
+  fill: 1.75,
+  rim: 1.41,
+  backdrop: 1.29,
 };
 
 /** What the current room asked for, before any of this is applied. */
@@ -89,13 +95,12 @@ const KEY = 'colin.look.v1';
 export function createLook(parts: LookParts): Look {
   const { colin, lights, curve, characterScene, sky, toon } = parts;
 
-  /* Read off the model rather than assumed: `loadCharacter` sets roughness from
-     its own options and a re-export could change it, and "reset" has to mean
-     "what this file ships as" rather than "what was hard-coded here once". */
-  const shipped: LookConfig = {
-    ...DEFAULT_LOOK,
-    roughness: colin.materials[0]?.roughness ?? DEFAULT_LOOK.roughness,
-  };
+  /* The table above, exactly. It used to read roughness off the model instead,
+     on the grounds that the export is the authority — and that was right while
+     these were neutral placeholders and wrong the moment they became somebody's
+     answer. "Reset" means "back to the look that was chosen", not "back to
+     whatever number happens to be in the GLB". */
+  const shipped: LookConfig = { ...DEFAULT_LOOK };
 
   const config: LookConfig = { ...shipped };
   try {
