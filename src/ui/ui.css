@@ -245,6 +245,75 @@ body.ready #ui { opacity: 1; }
 .tile { position: relative; }
 .tile.on .label { color: var(--selected-edge); font-weight: 600; }
 
+/* ---------------- sliders ---------------- */
+
+/* Deliberately tight. Every pixel a tray takes is a pixel of the man being
+   adjusted, and four comfortable sliders cover him to the knees — which on a
+   screen for judging how he looks is the one thing that cannot happen. */
+.slider {
+  pointer-events: auto;
+  display: grid;
+  gap: 0;
+  padding: 3px 13px 4px;
+  border-radius: 15px;
+}
+.slider .cap {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--ink-soft);
+  letter-spacing: -0.01em;
+}
+.slider .cap b {
+  font-weight: 600;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+}
+.slider input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 20px;
+  margin: 0;
+  background: none;
+  /* The page never scrolls and the tray does not scroll vertically, so a drag
+     that starts on a slider belongs to the slider. Without this the browser
+     claims it and the thumb only moves on a perfectly horizontal swipe. */
+  touch-action: none;
+}
+.slider input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(22, 19, 15, 0.14);
+}
+.slider input[type="range"]::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(22, 19, 15, 0.14);
+}
+.slider input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -7px;
+  border-radius: 999px;
+  background: var(--accent);
+  border: 2px solid #fbf9f6;
+  box-shadow: 0 2px 6px rgba(20, 16, 12, 0.32);
+}
+.slider input[type="range"]::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--accent);
+  border: 2px solid #fbf9f6;
+  box-shadow: 0 2px 6px rgba(20, 16, 12, 0.32);
+}
+
 /* A word you can press, with nothing drawn around it. */
 .text {
   pointer-events: auto;

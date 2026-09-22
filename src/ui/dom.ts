@@ -65,6 +65,7 @@ const PATHS: Record<string, string> = {
   gallery: 'M4 5h16v14H4zM4 15.5 9 11l4.5 4M14 13l2.5-2.2L20 13.6M9 9h.01',
   more: 'M6 12h.01M12 12h.01M18 12h.01',
   grid: 'M4.5 4.5h6v6h-6zM13.5 4.5h6v6h-6zM4.5 13.5h6v6h-6zM13.5 13.5h6v6h-6z',
+  look: 'M12 4.2a7.8 7.8 0 1 0 0 15.6 7.8 7.8 0 0 0 0-15.6M12 4.2v15.6M15.3 5v14M18 7v10',
   home: 'M4 10.5 12 4l8 6.5V20h-5v-6H9v6H4z',
   style: 'M8 4 5 6 3 9l2.5 1.8L7 9v11h10V9l1.5 1.8L21 9l-2-3-3-2-2 2.2h-4z',
   back: 'M14.5 5.5 8 12l6.5 6.5',
@@ -101,6 +102,45 @@ export function icon(name: string, size = 22): SVGElement | null {
   path.setAttribute('d', d);
   svg.appendChild(path);
   return svg;
+}
+
+export interface SliderOptions {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  /** How the number reads. Defaults to two decimals. */
+  format?: (value: number) => string;
+  onInput: (value: number) => void;
+}
+
+/**
+ * A labelled range, with its value showing.
+ *
+ * `input` rather than `change`, because the whole point of a look control is
+ * watching him change while your thumb is on it — and `touch-action: none` on
+ * the track, or the browser treats the drag as a scroll and the slider only
+ * moves if you happen to start vertically.
+ */
+export function slider(options: SliderOptions): HTMLElement {
+  const format = options.format ?? ((v: number) => v.toFixed(2));
+  const readout = el('b', {}, format(options.value));
+  const input = el('input', {
+    type: 'range',
+    min: String(options.min),
+    max: String(options.max),
+    step: String(options.step),
+    value: String(options.value),
+  }) as HTMLInputElement;
+  input.addEventListener('input', () => {
+    const value = Number(input.value);
+    readout.textContent = format(value);
+    options.onInput(value);
+  });
+  return el('label.slider', {},
+    el('div.cap', {}, el('span', {}, options.label), readout),
+    input);
 }
 
 /** A tap that cannot be a scroll or a text selection — every button here. */

@@ -61,6 +61,7 @@ src/listen.ts                   the browser's speech recognition, and when to de
 src/mic.ts                      your voice as audio, for the meter — not the recogniser
 src/audio.ts                    what a sound is doing: level, bands, brightness, onsets
 src/ground.ts                   the studio floor, and the shadow that makes it one
+src/look.ts                     brightness, roughness, emission, saturation — his taste
 src/toon.ts                     the other way he could look: bands, a rim, an ink line
 src/brain.ts                    the Worker chat call, streamed
 src/voice.ts                    the ElevenLabs clone: chunking, scheduling, the audio graph
@@ -77,7 +78,7 @@ src/ui/                         the app around the render — see "The app aroun
   context.ts                    everything a screen is allowed to touch
   dom.ts                        el(), icon(), button() — the whole view layer
   ui.css                        the look: one scale, one radius, one shadow
-  screens/                      stage, home, outfits, poses, mood, emotes, rooms, camera, gallery, more
+  screens/                      stage, home, outfits, poses, mood, emotes, rooms, look, camera, gallery, more
 VISEMES.md                      what the face has, and who is allowed to move it
 public/kitchen/                 the baked assets, served verbatim
   kitchen_room_02.glb           the room: 82 meshes, Draco + WebP
@@ -901,6 +902,36 @@ not carry an audio grant across a page load, so there is nothing to remember —
 and somebody who wanted to be talked to is not annoyed by being asked whether
 they want to be talked to. **Just look around** skips the lot.
 
+## His look
+
+*More → His look*, or the Look tile on the hub. Brightness, the three lights,
+roughness, emission, environment, saturation, and how bright the backdrop is —
+with him standing there while you drag.
+
+**The room sets the baseline and this sets the taste.** That distinction is the
+whole design. `stage.ts` writes exposure, emission, environment and the three
+light intensities on every change of room, because a baked kitchen and a white
+sweep want nothing like the same numbers — so anything adjusted by hand used to
+be correct until the next room and then silently gone. Every knob here except two
+is a **multiplier** on whatever the scene asked for, so "a bit brighter" stays a
+bit brighter everywhere, including in rooms added later. The two absolutes are the
+two no scene has an opinion about: how rough his surface is, and how saturated.
+
+Two implementation notes:
+
+- **Saturation is applied in linear light, before the tone curve.** Afterwards it
+  fights the curve's own desaturation of the highlights and turns the bright end
+  plastic; before it, it behaves like a property of the material — the way it
+  would if the texture had been painted that way.
+- It rides on the patch in `toon.ts`, because **that is the only
+  `onBeforeCompile` his materials get** and a second module setting one would
+  silently replace the first. `look.ts` owns what the number is; `toon.ts` owns
+  where it lands in the shader.
+
+Nothing in a slider's `input` handler rebuilds the screen, which sounds obvious
+and is the bug that got written first: refreshing the tray from inside a drag
+replaces the element the thumb is on, and the drag ends on the frame it started.
+
 ## The other way he could look
 
 A switch, not a decision. `src/toon.ts` installs a patch on his materials at
@@ -1041,6 +1072,24 @@ Three things that were wrong first:
 The blob is not deleted, just turned down to a whisper in a studio: it darkens
 the last centimetre under his soles, which a shadow map at this resolution cannot
 resolve and which is most of what sells contact.
+
+### Every backdrop was black on iOS for a fortnight
+
+Worth writing down, because nothing about it was visible from here and the
+failure mode is silent by design.
+
+The sweep was a `FloatType` DataTexture with `LinearFilter` on it. **Linear
+filtering of a 32-bit float texture needs `OES_texture_float_linear`, and Safari
+does not expose it.** A texture whose filter the driver cannot honour is
+*incomplete*, and an incomplete texture samples as solid black — it does not warn,
+does not throw, and renders perfectly in every desktop browser. Every studio
+looked right in Chromium and every one of them was a black screen on the phone.
+
+It is an 11 KB colour ramp. There was never anything float about it worth having,
+so it is eight-bit sRGB now, which needs no extension at all. The three driver
+facts that have actually cost something are printed in **More → About**, because
+the device where this goes wrong is a phone and nobody is opening a console on a
+phone.
 
 ### The backdrop is also the light
 

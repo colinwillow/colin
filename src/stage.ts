@@ -27,6 +27,7 @@ import * as THREE from 'three';
 import type { Character, CharacterLights } from './character';
 import type { ShotDirector, ShotName } from './shot';
 import type { Ground } from './ground';
+import type { LookBase } from './look';
 
 export interface Backdrop {
   /** The colour of the sweep at eye level. */
@@ -125,6 +126,13 @@ export const SCENES: StageScene[] = [
 export interface Stage {
   scenes: StageScene[];
   readonly current: StageScene;
+  /** The backdrop's material, so the look knobs can dim the sweep. */
+  readonly sky: THREE.MeshBasicMaterial;
+  /** What the room just asked for. `look.ts` multiplies its own taste onto this
+   *  — the room decides the baseline, and something else decides the rest. */
+  readonly base: LookBase;
+  /** Called after every change of room, with that baseline. */
+  onScene?: (base: LookBase) => void;
   go: (id: string, immediate?: boolean) => void;
   /** Change the framing without changing the scene. `undefined` means "whatever
    *  this scene opens on", which is not the same as `null` — null is the rig. */
@@ -135,21 +143,30 @@ export interface Stage {
 /**
  * A vertical sweep, as an equirectangular strip.
  *
- * One pixel wide is all it needs: there is no horizontal variation in a cyc, and
- * a 1×N texture pre-filters into an environment just as well as a large one
- * while costing nothing to build.
+ * EIGHT-BIT, NOT FLOAT, AND THAT IS THE WHOLE BUG THIS ONCE HAD. Every backdrop
+ * rendered black on iOS while being perfect in Chromium, because the strip was a
+ * `FloatType` DataTexture with `LinearFilter` on it — and linear filtering of a
+ * 32-bit float texture needs `OES_texture_float_linear`, which Safari does not
+ * expose. A texture whose filter the driver cannot honour is INCOMPLETE, and an
+ * incomplete texture samples as solid black rather than failing loudly. It is an
+ * 11 KB colour ramp; there was never anything float about it worth having.
+ *
+ * Four pixels wide rather than one: there is no horizontal variation in a cyc,
+ * but a one-pixel-wide texture is a shape some drivers have opinions about and
+ * the whole thing is 4 KB either way.
  */
 function makeSweep(renderer: THREE.WebGLRenderer, backdrop: Backdrop) {
   const lift = backdrop.lift ?? 0.22;
-  const base = new THREE.Color(backdrop.color).convertSRGBToLinear();
+  const base = new THREE.Color(backdrop.color);
   const top = base.clone().lerp(new THREE.Color(1, 1, 1), lift * 0.9);
   /* The floor of the sweep barely darkens. A cyclorama that visibly gets darker
      toward the bottom draws a horizon, and a horizon turns an infinite space
      into a room — the shadow on the ground is what says there is a floor. */
   const floor = base.clone().multiplyScalar(1 - lift * 0.9);
 
+  const width = 4;
   const height = 256;
-  const data = new Float32Array(height * 4);
+  const data = new Uint8Array(width * height * 4);
   const c = new THREE.Color();
   for (let y = 0; y < height; y++) {
     // v runs top to bottom. The horizon sits a little below centre, which is
@@ -157,14 +174,25 @@ function makeSweep(renderer: THREE.WebGLRenderer, backdrop: Backdrop) {
     const v = y / (height - 1);
     if (v < 0.56) c.copy(top).lerp(base, v / 0.56);
     else c.copy(base).lerp(floor, (v - 0.56) / 0.44);
-    data[y * 4] = c.r; data[y * 4 + 1] = c.g; data[y * 4 + 2] = c.b; data[y * 4 + 3] = 1;
+    /* The colours above are in sRGB, and the texture is declared sRGB below, so
+       they are written as-is and the shader does the decoding. Mixing in sRGB is
+       not physically how light adds up, but this is a painted backdrop rather
+       than a render of one, and it is the space the colours were chosen in. */
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      data[i] = Math.round(c.r * 255);
+      data[i + 1] = Math.round(c.g * 255);
+      data[i + 2] = Math.round(c.b * 255);
+      data[i + 3] = 255;
+    }
   }
 
-  const texture = new THREE.DataTexture(data, 1, height, THREE.RGBAFormat, THREE.FloatType);
+  const texture = new THREE.DataTexture(data, width, height, THREE.RGBAFormat, THREE.UnsignedByteType);
   texture.mapping = THREE.EquirectangularReflectionMapping;
-  texture.colorSpace = THREE.LinearSRGBColorSpace;
+  texture.colorSpace = THREE.SRGBColorSpace;
   texture.magFilter = THREE.LinearFilter;
   texture.minFilter = THREE.LinearFilter;
+  texture.generateMipmaps = false;
   texture.needsUpdate = true;
 
   const pmrem = new THREE.PMREMGenerator(renderer);
@@ -176,6 +204,7 @@ function makeSweep(renderer: THREE.WebGLRenderer, backdrop: Backdrop) {
      own UVs run the other way, so one of the two has to be flipped and the probe
      is the one that must not be. */
   const painted = texture.clone();
+  painted.mapping = THREE.UVMapping;
   painted.flipY = true;
   painted.needsUpdate = true;
   return { sky: painted, envMap };
@@ -226,6 +255,17 @@ export function createStage(parts: StageParts): Stage {
   sky.visible = false;
   scene.add(sky);
 
+  /** The room's own numbers, kept so a look change can be re-applied without a
+   *  change of room. Overwritten by `go`. */
+  let base: LookBase = {
+    exposure: current.exposure,
+    emissiveIntensity: current.emissiveIntensity,
+    envMapIntensity: current.envMapIntensity,
+    key: current.lights.key,
+    fill: current.lights.fill,
+    rim: current.lights.rim,
+  };
+
   const sweepFor = (id: string, backdrop: Backdrop) => {
     let made = sweeps.get(id);
     if (!made) { made = makeSweep(renderer, backdrop); sweeps.set(id, made); }
@@ -251,18 +291,28 @@ export function createStage(parts: StageParts): Stage {
       characterScene.environment = roomEnvMap;
     }
 
-    look.exposure = next.exposure;
+    base = {
+      exposure: next.exposure,
+      emissiveIntensity: next.emissiveIntensity,
+      envMapIntensity: next.envMapIntensity,
+      key: next.lights.key,
+      fill: next.lights.fill,
+      rim: next.lights.rim,
+    };
+    look.exposure = base.exposure;
     for (const m of colin.materials) {
-      m.envMapIntensity = next.envMapIntensity;
-      m.emissiveIntensity = next.emissiveIntensity;
+      m.envMapIntensity = base.envMapIntensity;
+      m.emissiveIntensity = base.emissiveIntensity;
     }
-    lights.key.intensity = next.lights.key;
-    lights.fill.intensity = next.lights.fill;
-    lights.rim.intensity = next.lights.rim;
+    lights.key.intensity = base.key;
+    lights.fill.intensity = base.fill;
+    lights.rim.intensity = base.rim;
     colin.setShadowStrength(next.shadow);
     /* Last, and after the blob: in a studio this turns the blob down to a
        whisper and puts a real shadow on the floor instead. */
     ground.set(next.kind === 'studio');
+    // And now whatever taste is sitting on top of the room's numbers.
+    api.onScene?.(base);
 
     /* A studio has no floor to walk on and no room to walk around, so he is put
        back on his mark and told to stand still — and turned to face the front,
@@ -279,19 +329,11 @@ export function createStage(parts: StageParts): Stage {
     shots.set(next.shot, immediate);
   };
 
-  /* APPLIED, not assumed. `current` starts as the first scene in the table, but
-     nothing in the world has been told about it — the room is still visible, the
-     sweep has never been built, and the camera is on the rig. A default that is
-     only ever a variable is a default that never happens.
-     Straight in, with no ease: this runs while the loading overlay is still up,
-     and a camera flying to its mark behind it would arrive mid-flight. */
-  let opening = current.id;
-  try { opening = localStorage.getItem(KEY) || opening; } catch { /* no storage */ }
-  go(opening, true);
-
-  return {
+  const api: Stage = {
     scenes: SCENES,
     get current() { return current; },
+    get sky() { return sky.material as THREE.MeshBasicMaterial; },
+    get base() { return base; },
     go,
     frame: (shot, immediate) => shots.set(shot === undefined ? current.shot : shot, immediate),
     dispose: () => {
@@ -302,4 +344,15 @@ export function createStage(parts: StageParts): Stage {
       sky.removeFromParent();
     },
   };
+  /* APPLIED, not assumed. `current` starts as the first scene in the table, but
+     nothing in the world has been told about it — the room is still visible, the
+     sweep has never been built, and the camera is on the rig. A default that is
+     only ever a variable is a default that never happens.
+     Straight in, with no ease: this runs while the loading overlay is still up,
+     and a camera flying to its mark behind it would arrive mid-flight. */
+  let opening = current.id;
+  try { opening = localStorage.getItem(KEY) || opening; } catch { /* no storage */ }
+  go(opening, true);
+
+  return api;
 }

@@ -90,8 +90,22 @@ export const DEFAULT_TOON: ToonConfig = {
  *  black ring in the middle of his face, and the teeth are inside his head. */
 const NO_OUTLINE = ['eyes', 'teeth', 'tongue'];
 
+/**
+ * The one grade that rides on top of everything, toon or not.
+ *
+ * It lives here because THIS IS THE ONLY `onBeforeCompile` HIS MATERIALS GET —
+ * a second module setting one would silently replace this one. `look.ts` owns
+ * what the number is; this owns where it lands in the shader.
+ */
+export interface Grade {
+  /** 1 leaves the colour alone, 0 is greyscale, 2 is twice as vivid. */
+  saturation: number;
+}
+
 export interface Toon {
   config: ToonConfig;
+  /** Set the grade that applies whether or not the toon look is on. */
+  setGrade: (grade: Grade) => void;
   /** Push the config at the shaders. Call after any change. */
   apply: () => void;
   /** Per frame. Keeps the emission cap in step with whatever the current room
@@ -120,6 +134,7 @@ export function createToon(colin: Character, config: ToonConfig = { ...DEFAULT_T
     uRimCol: { value: new THREE.Color(DEFAULT_TOON.rimColor) },
     uGlow: { value: 0 },
     uEmissive: { value: 1 },
+    uSat: { value: 1 },
   };
 
   /* Patched into the standard material rather than replacing it with
@@ -130,7 +145,7 @@ export function createToon(colin: Character, config: ToonConfig = { ...DEFAULT_T
     material.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, uniforms);
       shader.fragmentShader =
-        'uniform float uToonK, uToonN, uToonSoft, uToonFloor, uRim, uRimP, uGlow, uEmissive;\n'
+        'uniform float uToonK, uToonN, uToonSoft, uToonFloor, uRim, uRimP, uGlow, uEmissive, uSat;\n'
         + 'uniform vec3 uRimCol;\n'
         + 'float toonRamp(float x){\n'
         + '  float s = x * uToonN, b = floor(s), f = s - b;\n'
@@ -157,7 +172,15 @@ export function createToon(colin: Character, config: ToonConfig = { ...DEFAULT_T
         float _rf = 1.0 - saturate( dot( geometryNormal, geometryViewDir ) );
         totalEmissiveRadiance += uRimCol * ( pow( _rf, uRimP ) * uRim * uToonK );
         totalEmissiveRadiance += diffuseColor.rgb * ( uGlow * uToonK );
-      }`);
+      }`)
+          /* Saturation, in linear light and BEFORE the tone curve — which is the
+             only place it belongs. Applied afterwards it fights the curve's own
+             desaturation of the highlights and turns the bright end plastic;
+             applied here it is a property of the material, the way it would be
+             if the texture had been painted that way. */
+          .replace('#include <tonemapping_fragment>',
+            'gl_FragColor.rgb = mix( vec3( dot( gl_FragColor.rgb, vec3( 0.2126, 0.7152, 0.0722 ) ) ),'
+            + ' gl_FragColor.rgb, uSat );\n#include <tonemapping_fragment>');
     };
     /* WITHOUT THIS THE PATCH REACHES HALF OF HIM. three builds a program cache
        key out of a material's parameters and nothing else — `onBeforeCompile` is
@@ -280,5 +303,11 @@ export function createToon(colin: Character, config: ToonConfig = { ...DEFAULT_T
   };
 
   apply();
-  return { config, apply, update: capEmissive, get on() { return config.amount > 0; } };
+  return {
+    config,
+    apply,
+    setGrade: (grade) => { uniforms.uSat.value = Math.max(0, grade.saturation); },
+    update: capEmissive,
+    get on() { return config.amount > 0; },
+  };
 }

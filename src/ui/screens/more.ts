@@ -21,6 +21,8 @@ export const more = (ctx: UiContext): Screen => {
         el('div.chip', { style: 'visibility:hidden' })),
       el('div.body', {},
         el('div.section', {}, 'Look'),
+        row('His look', 'Brightness, roughness, emission, saturation', null,
+          () => ctx.shell.go('look')),
         /* One switch on an experiment with ten numbers behind it. The numbers
            are in the tuning panel; this is the only one worth having a button
            for, because the question it answers is "which of the two do I
@@ -91,7 +93,10 @@ export const more = (ctx: UiContext): Screen => {
           'He hears you, thinks about it, and answers in his own voice. ',
           el('br'), el('br'),
           `${ctx.colin.clips.length} clips · ${ctx.face.names.length} face shapes · `,
-          `${ctx.wardrobe.items.length} wearables`)));
+          `${ctx.wardrobe.items.length} wearables`,
+          el('br'), el('br'),
+          el('span', { style: 'font-size:12px;opacity:.7' },
+            Object.entries(ctx.capabilities).map(([k, v]) => `${k} ${v}`).join(' · ')))));
   };
 
   return { id: 'more', chrome: 'none', cover: build };

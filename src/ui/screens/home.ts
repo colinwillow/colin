@@ -3,10 +3,14 @@ import { el, icon, button } from '../dom';
 import type { UiContext } from '../context';
 import type { Screen } from '../shell';
 
+/* Four down the left, three down the right. The odd one out is deliberate: an
+   even split would put a button either side of his face at eye level, and the
+   gap is where he is. */
 const HUB: { id: string; label: string; icon: string }[] = [
   { id: 'outfits', label: 'Outfits', icon: 'outfits' },
   { id: 'mood', label: 'Mood', icon: 'mood' },
   { id: 'rooms', label: 'Rooms', icon: 'rooms' },
+  { id: 'look', label: 'Look', icon: 'look' },
   { id: 'poses', label: 'Poses', icon: 'poses' },
   { id: 'emotes', label: 'Emotes', icon: 'emotes' },
   { id: 'camera', label: 'Photos', icon: 'photos' },
@@ -47,7 +51,7 @@ export const home = (ctx: UiContext): Screen => {
       // Three down each side, so he is never behind a button.
       const column = (items: typeof HUB) => el('div#hub', {}, ...items.map((item) =>
         button('glass', () => ctx.shell.go(item.id), icon(item.icon, 21), el('span', {}, item.label))));
-      return [column(HUB.slice(0, 3)), column(HUB.slice(3))];
+      return [column(HUB.slice(0, 4)), column(HUB.slice(4))];
     },
 
     update: () => {

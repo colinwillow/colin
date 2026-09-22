@@ -12,6 +12,7 @@ import type { Poses } from '../poses';
 import type { Wardrobe } from '../wardrobe';
 import type { Camera } from '../photos';
 import type { Toon } from '../toon';
+import type { Look } from '../look';
 import type { createWander } from '../wander';
 import type { Shell } from './shell';
 
@@ -28,6 +29,10 @@ export interface UiContext {
   camera: Camera;
   /** The cel-shading experiment. `toon.config.amount` is the whole switch. */
   toon: Toon;
+  /** Brightness, emission, roughness, saturation — his look on top of the room's. */
+  look: Look;
+  /** Driver facts worth being able to read on the device itself. */
+  capabilities: Record<string, string>;
   /** Toggles the developer tuning panel. */
   tuning: (on?: boolean) => boolean;
   shell: Shell;

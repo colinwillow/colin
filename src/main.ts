@@ -19,6 +19,7 @@ import { createShotDirector } from './shot';
 import { createStage, type Stage } from './stage';
 import { createToon, type Toon } from './toon';
 import { createGround, type Ground } from './ground';
+import { createLook } from './look';
 import { createPoses } from './poses';
 import { createWardrobe } from './wardrobe';
 import { createCamera } from './photos';
@@ -76,6 +77,26 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
+
+/**
+ * The handful of driver facts that have actually cost something.
+ *
+ * `OES_texture_float_linear` is here because its absence on Safari is what made
+ * every studio backdrop render solid black for a fortnight: a float texture with
+ * a linear filter the driver cannot honour is INCOMPLETE, and an incomplete
+ * texture samples black rather than failing in any way you could see. Shown in
+ * More → About, because the device where this goes wrong is a phone and the
+ * console on a phone is not somewhere anybody is going to look.
+ */
+const CAPABILITIES: Record<string, string> = (() => {
+  const gl = renderer.getContext();
+  return {
+    WebGL: renderer.capabilities.isWebGL2 ? '2' : '1',
+    'float textures filter': gl.getExtension('OES_texture_float_linear') ? 'yes' : 'no',
+    'half-float filter': gl.getExtension('OES_texture_half_float_linear') ? 'yes' : 'no',
+    'max texture': String(renderer.capabilities.maxTextureSize),
+  };
+})();
 
 /**
  * The shutter.
@@ -229,7 +250,7 @@ try {
   // level but crushes the range above it — skin to hoodie comes out at 1.9 where
   // the reference is 2.7. ACES lands that ratio at 2.71 almost exactly; it just
   // needs a little more exposure than the room to sit at the same level.
-  const look = {
+  const curve = {
     toneMapping: THREE.ACESFilmicToneMapping as THREE.ToneMapping,
     exposure: 0.58,
   };
@@ -269,8 +290,8 @@ try {
     renderer.toneMappingExposure = roomExposure.value;
     renderer.render(scene, camera);            // baked room, no lights
 
-    renderer.toneMapping = look.toneMapping;
-    renderer.toneMappingExposure = look.exposure;
+    renderer.toneMapping = curve.toneMapping;
+    renderer.toneMappingExposure = curve.exposure;
     renderer.render(characterScene, camera);   // Colin, lit by his own rig
 
     // The one moment the drawing buffer still holds the frame — see photos.ts.
@@ -289,7 +310,7 @@ try {
   const ground = createGround(renderer, colin);
   characterScene.add(ground.group);
 
-  buildTuningPanel(kitchen.manifest.exposure, lightmapped, colin, lights, look, roomExposure, kitchen, resize, wander, rig, face, alive, talk, roomLights, toon, ground);
+  buildTuningPanel(kitchen.manifest.exposure, lightmapped, colin, lights, curve, roomExposure, kitchen, resize, wander, rig, face, alive, talk, roomLights, toon, ground);
 
   /* The app around the render: which room he is in, what he is wearing, what he
      is doing, and the screens that change each of those. Everything below
@@ -305,20 +326,30 @@ try {
   shots.enableDrag(renderer.domElement);
   stage = createStage({
     renderer, scene, characterScene, room: kitchen.room, roomEnvMap: kitchen.envMap,
-    colin, lights, look, wander, shots, ground,
+    colin, lights, look: curve, wander, shots, ground,
   });
+  /* How he looks, on top of whatever the room asked for. Created after the
+     stage because it needs the backdrop's material, and wired both ways: the
+     stage hands it each room's baseline, and it multiplies taste onto it. */
+  const appearance = createLook({
+    colin, lights, curve, characterScene, sky: stage.sky, toon,
+  });
+  stage.onScene = (base) => appearance.setBase(base);
+  appearance.setBase(stage.base);
+
   const ui = createInterface({
-    colin, face, alive, wander, talk, stage, shots, toon,
+    colin, face, alive, wander, talk, stage, shots, toon, look: appearance,
     poses: createPoses(colin, wander, canWander),
     wardrobe: createWardrobe(colin.model),
     camera: photos,
+    capabilities: CAPABILITIES,
     tuning: setTuning,
   });
   uiUpdate = ui.update;
 
   // Debug handles. From the devtools console: kitchen.interactive.Fridge_Door,
   // kitchen.lightmapped[0].lightMapIntensity, new THREE.Raycaster(), ...
-  Object.assign(window, { renderer, kitchen, colin, wander, rig, face, alive, talk, roomLights, THREE, stage, shots, toon, ground, ui });
+  Object.assign(window, { renderer, kitchen, colin, wander, rig, face, alive, talk, roomLights, THREE, stage, shots, toon, ground, look: appearance, ui });
 
   loading.classList.add('done');
   document.body.classList.add('ready');
@@ -361,7 +392,7 @@ function buildTuningPanel(
   lightmapped: THREE.MeshStandardMaterial[],
   colin: Character,
   lights: CharacterLights,
-  look: { toneMapping: THREE.ToneMapping; exposure: number },
+  curve: { toneMapping: THREE.ToneMapping; exposure: number },
   roomExposure: { value: number },
   kitchen: Awaited<ReturnType<typeof loadKitchen>>,
   resize: () => void,
@@ -580,11 +611,14 @@ function buildTuningPanel(
     Reinhard: THREE.ReinhardToneMapping,
     None: THREE.NoToneMapping,
   };
-  const curveState = { curve: 'ACESFilmic', exposure: look.exposure };
+  const curveState = { curve: 'ACESFilmic', exposure: curve.exposure };
   lit.add(curveState, 'curve', Object.keys(curves)).name('tone curve')
-    .onChange((v: string) => { look.toneMapping = curves[v]; });
-  lit.add(curveState, 'exposure', 0.1, 2, 0.01).name('his exposure')
-    .onChange((v: number) => { look.exposure = v; });
+    .onChange((v: string) => { curve.toneMapping = curves[v]; });
+  /* Note that the room and the Look screen both write this every time either of
+     them changes, so a value set here lasts until the next of those. The lasting
+     version of this knob is Look -> brightness. */
+  lit.add(curveState, 'exposure', 0.1, 2, 0.01).name('his exposure (transient)')
+    .onChange((v: number) => { curve.exposure = v; });
   lit.open();
   gui.close();
 }

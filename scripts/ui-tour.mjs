@@ -74,6 +74,8 @@ const steps = [
   ['poses-held', async () => { await tap('Wiggle feet'); await tap('Hold'); }],
   ['mood', async () => { await tap('.chip'); await tap('Mood'); }],
   ['emotes', async () => { await tap('.chip'); await tap('Emotes'); }],
+  ['look', async () => { await tap('.chip'); await tap('Look'); }],
+  ['look-surface', async () => tap('Surface')],
   ['rooms', async () => { await tap('.chip'); await tap('Rooms'); }],
   // The white room is the default now, so the interesting move is the other way.
   ['rooms-kitchen', async () => tap('Kitchen')],
