@@ -47,6 +47,9 @@ export interface TalkOptions {
   poses?: Poses;
   /** How he is feeling. Every exchange moves it; his face reads it. */
   feelings: Feelings;
+  /** Where he is standing, in the words he would use. Sent with every question
+   *  so that he has a room to mention rather than a screen. */
+  where?: () => string;
   /** Whether the scene he is standing in has a floor to walk on. Asked when a
    *  conversation ends, rather than assuming the answer is yes: a studio
    *  backdrop is one room he must not stroll out of. */
@@ -95,6 +98,12 @@ export function createConversation(opts: TalkOptions): Conversation {
     : null;
   if (commands) console.log(`commands — he can be told to: ${commands.able.join(', ')}`);
 
+  /* WHAT IS TRUE OF HIM RIGHT NOW, sent with every question.
+     Not decoration. Asked something vague — "just checking some stuff out" —
+     he has to reach for something, and with nothing physical in front of him he
+     reaches for the screen and calls himself a computer, which is the one thing
+     he must never do. A room with a fridge in it and a clock that says four in
+     the morning are two things to reach for instead. */
   const brain = createBrain(endpoint, persona, () => ({
     mood: {
       feeling: feelings.label,
@@ -104,6 +113,10 @@ export function createConversation(opts: TalkOptions): Conversation {
       energy: Math.round(feelings.energy * 10) / 10,
       ...(feelings.topic ? { on_his_mind: feelings.topic } : {}),
     },
+    ...(opts.where ? { where: opts.where() } : {}),
+    // Theirs, not a server's. Being up at four is only funny if it is actually
+    // four where the conversation is happening.
+    time: new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }),
   }));
   const voice = createVoice(endpoint, persona);
   const ears = createEars();

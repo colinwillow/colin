@@ -59,6 +59,17 @@ export interface StageScene {
   shadow: number;
   /** The framing this scene opens on, or null to leave the camera on the rig. */
   shot: ShotName | null;
+  /**
+   * Where he would say he is, if it came up.
+   *
+   * Written as a person would say it rather than as the table names it, because
+   * this goes to the model with every question and the point of it is material:
+   * somebody standing in a kitchen has a fridge to mention, and somebody
+   * standing in an empty room has the emptiness. Without it he has nothing
+   * physical to reach for and reaches for the screen instead, which is the one
+   * thing he must never do.
+   */
+  place: string;
 }
 
 /* The kitchen's numbers are the ones already dialled in against the bake — see
@@ -76,6 +87,7 @@ const KITCHEN: StageScene = {
   lights: { key: 0.3, fill: 0.6, rim: 0.5 },
   shadow: 1,
   shot: null,
+  place: 'his kitchen — a stool, a little table, a fridge, one pendant lamp, a window',
 };
 
 /* Studio numbers are a different balance and not a tweak of the kitchen's. The
@@ -98,6 +110,7 @@ const studio = (
   lights: { key: 0.85, fill: 0.45, rim: 1.1 },
   shadow: 0.85,
   shot: 'standing',
+  place: 'an empty room with nothing in it, one wall and a floor and no corner between them',
   ...over,
 });
 
@@ -112,17 +125,23 @@ export const SCENES: StageScene[] = [
     // Barely any sweep at all. A visible gradient behind him is a wall, and the
     // thing being aimed at here is a space with no back to it.
     backdrop: { color: '#e8e0d3', lift: 0.07 },
+    place: 'an empty warm off-white space with no walls and no corners, and nothing in it but him',
   }),
   studio('white', 'Studio', 'An empty white room with a floor.', '#f7f6f4', {
     backdrop: { color: '#f7f6f4', lift: 0.07 },
+    place: 'an empty white room, bright and bare, with a floor and nothing on it',
   }),
   KITCHEN,
   studio('slate', 'Slate', 'Dark and moody. The rim light earns its keep.', '#2a2d33', {
     exposure: 0.72, lights: { key: 1.1, fill: 0.4, rim: 1.8 }, shadow: 0.55,
+    place: 'somewhere dark and nearly black, one hard light coming round the edge of him',
   }),
-  studio('mint', 'Mint', 'Colour comes off the wall and onto him.', '#bfe0d2'),
+  studio('mint', 'Mint', 'Colour comes off the wall and onto him.', '#bfe0d2', {
+    place: 'a pale green space with the colour of the wall coming off onto him',
+  }),
   studio('sunset', 'Sunset', 'Low warm wash, like the end of a day.', '#e0a071', {
     exposure: 0.66,
+    place: 'a low orange wash, like the last half hour of a day',
   }),
 ];
 

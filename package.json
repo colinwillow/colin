@@ -15,7 +15,8 @@
     "latency-check": "node scripts/latency-check.mjs",
     "command-check": "node scripts/command-check.mjs",
     "mood-check": "node scripts/mood-check.mjs",
-    "echo-check": "node scripts/echo-check.mjs"
+    "echo-check": "node scripts/echo-check.mjs",
+    "persona-check": "node scripts/persona-check.mjs"
   },
   "dependencies": {
     "three": "^0.185.0"

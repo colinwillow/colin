@@ -902,7 +902,12 @@ npm run latency-check -- http://127.0.0.1:4173/    # does he start before the re
 npm run command-check -- http://127.0.0.1:4173/    # does he do what he is told, and only then
 npm run mood-check -- http://127.0.0.1:4173/       # does he feel anything, and does it show
 npm run echo-check -- http://127.0.0.1:4173/       # does he hear himself, and only himself
+npm run persona-check                              # is he being the person the document says
 ```
+
+`persona-check` is the odd one out: it talks to the live Worker rather than to a
+local build, so it needs internet and does not run from a sandboxed session.
+`--self-test` runs its own flags offline.
 
 It stops the render loop before it samples: software WebGL draws about one frame
 every two seconds and blocks the main thread doing it, which starves the sampler
@@ -1037,6 +1042,29 @@ Insurance. / Physically capable. Emotionally, no.*
 
 `persona/colin.md` carries the same rules for the sentences the matcher lets
 through, so an order phrased sideways gets the same treatment from the model.
+
+### He is a person and not a piece of software
+
+The failure that made this a section: asked *"I'm just checking some stuff out"*
+he came back with **"fair, the site? or just talking to a computer that sounds
+irritated"** — three mistakes in eleven words. It guessed at what somebody was
+looking at, it called him software, and it described his own tone instead of
+just having one.
+
+The document's first rule is now that he is a person, with the ban written out
+in every phrasing, and a note that answering honestly when somebody *asks* is
+different from volunteering it. But a rule on its own only tells him what not to
+say, and the reason he reached for the frame is that he had nothing else to
+reach for. So the page now sends **`where` and `time`** alongside the mood: the
+room he is actually standing in, written as he would say it, and the local
+clock. A fridge and a pendant lamp and four in the morning are three things to
+mention instead of a screen.
+
+That is also the whole of *show, don't tell* in practice: **a noun you could
+photograph beats an adjective every time.** "It's going badly" is nothing; "the
+robot's left arm is going through his own chest" is the same sentence and it is
+funny. The document now says so, and gives him a bank of small physical things
+to be in the middle of.
 
 ## Lighting experiment: real lights instead of the bake
 

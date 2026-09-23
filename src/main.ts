@@ -245,7 +245,10 @@ try {
   const feelings = createFeelings();
 
   const talk: Conversation = createConversation(
-    { endpoint: BRAIN, persona: PERSONA, face, alive, colin, wander, camera, poses, feelings, canWander },
+    {
+      endpoint: BRAIN, persona: PERSONA, face, alive, colin, wander, camera, poses, feelings,
+      canWander, where: () => stage?.current.place ?? '',
+    },
   );
   if (talk.mouth) {
     console.log(`visemes — ${talk.mouth.rig} rig, ${talk.mouth.matched.length} shapes matched`
