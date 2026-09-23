@@ -55,6 +55,7 @@ src/character.ts                loads Colin, fits him to height, contact shadow
 src/wander.ts                   walks him around the room on his own
 src/face.ts                     his face: the shape rig, blinks, gaze, expressions
 src/mood.ts                     what the conversation leaves him in
+src/commands.ts                 being told to do something, and him doing it
 src/wave.ts                     the level meter along the bottom
 src/talk.ts                     the conversation: ears -> brain -> voice -> mouth
 src/listen.ts                   the browser's speech recognition, and when to deafen it
@@ -858,6 +859,7 @@ npm run build && npx vite preview --port 4173 &
 npm run talk-check -- http://127.0.0.1:4173/
 npm run mic-check -- http://127.0.0.1:4173/        # the push-to-talk path
 npm run latency-check -- http://127.0.0.1:4173/    # does he start before the reply ends
+npm run command-check -- http://127.0.0.1:4173/    # does he do what he is told, and only then
 ```
 
 It stops the render loop before it samples: software WebGL draws about one frame
@@ -870,6 +872,59 @@ The tuning panel has a **Talking** folder: type a line into *say to him* and
 press *send*. It takes exactly the path a spoken sentence does, minus the
 recogniser, and asks for no permissions at all. From the console,
 `talk.say('...')`, `talk.voice.stop()` and `talk.brain.forget()`.
+
+### Telling him to do something
+
+`src/commands.ts`. "Do a dance" used to go to the model like any other
+sentence, and the model — which cannot move him — answered **"like this"** over
+a man standing perfectly still. That is worse than no answer at all: a claim
+with nothing behind it.
+
+**So an order never reaches the model.** It is matched on the page, and the clip
+starts on the frame the sentence lands. That is not only more honest, it makes
+an order the fastest thing in the app — no round trip to think, none to write,
+and a line that was already on the device. Both halves still go into the
+transcript, because the next thing anybody says is usually about what just
+happened ("that was terrible") and a model that was never told there was a dance
+has nothing to be rude about.
+
+**What he can do is read off the export, never written down.** Each move names
+the clip it wants as a *pattern*, and a move whose pattern finds nothing is not
+an error — it is something he cannot do yet, and he dodges the question instead
+of admitting it. Which is why the table has entries for moves the file has never
+had: drop a backflip into `colin.glb` and *"do a backflip"* starts working with
+nothing in the code to change.
+
+Today the export carries twelve he can actually do — `moonwalk, twerk, hiphop,
+wiggle, dance, wave, kneel, tired, sulk, swagger, tiptoe, run` — and seven he
+covers for: backflip, cartwheel, jumping, press-ups, throwing hands, a spin,
+clapping. Ask *"what can you do"* and he reads the list off the file, so the
+answer stays true through a re-export. Moving — *come here*, *back up*, *walk
+around* — goes through the wander instead of a clip, because every walk in the
+file is an in-place cycle and the wander is the only thing that moves him across
+a floor. In a studio, where there is no floor to cross, being sent anywhere
+becomes a refusal.
+
+**The rejection half is the dangerous half.** This sits in front of the model, so
+every false positive is a conversation replaced by a moonwalk — and *"do you like
+dancing"* is one word away from *"do a dance"*. A sentence counts as an order
+only if it is short enough to be a bare instruction or carries one of the words
+people put in front of one, and never if it is about the speaker: *"I can dance
+too"*, *"she loves to dance"*, *"my sister does hip hop"* all go to the model
+where they belong. `npm run command-check` is the table of both halves.
+
+What he says over the top comes out of a bank at the bottom of that file, for
+the same reason the greetings do — these are voice, not conversation, and a
+round trip to be smug is a second and a half. **Narration is banned**: "like
+this", "here you go", "watch me", because the move is already happening on
+screen and saying it out loud is the exact thing that was wrong. What is left is
+somebody who has been asked to prove he can do something obvious — *Obviously.
+No duh. Yeah, I'm not an idiot. Was that meant to be difficult?* — and, for the
+moves he has not got, a way out: *I did. You blinked. / Not in this room.
+Insurance. / Physically capable. Emotionally, no.*
+
+`persona/colin.md` carries the same rules for the sentences the matcher lets
+through, so an order phrased sideways gets the same treatment from the model.
 
 ## Lighting experiment: real lights instead of the bake
 

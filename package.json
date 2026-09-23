@@ -12,7 +12,8 @@
     "talk-check": "node scripts/talk-check.mjs",
     "mic-check": "node scripts/mic-check.mjs",
     "ui-tour": "node scripts/ui-tour.mjs",
-    "latency-check": "node scripts/latency-check.mjs"
+    "latency-check": "node scripts/latency-check.mjs",
+    "command-check": "node scripts/command-check.mjs"
   },
   "dependencies": {
     "three": "^0.185.0"

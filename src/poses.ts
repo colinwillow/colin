@@ -35,6 +35,26 @@ export interface Poses {
   groups: PoseGroup[];
   /** Start a clip running and stop the wander steering him. */
   play: (clip: string) => void;
+  /**
+   * Run a clip because he was asked to, and hand him back when it is over.
+   *
+   * The only difference from `play` is the clock. `play` is somebody holding
+   * the controls, and it holds them until they let go; this is him doing a
+   * thing and then going back to being himself, which is what a spoken order
+   * means. `seconds` left out is the clip's own length — right for a wave,
+   * which is over when the hand comes down, and wrong for a dance, which is a
+   * loop somebody has to decide to stop.
+   *
+   * False for a clip the export does not carry, which is how an order for a
+   * move he has not got knows to say something instead of doing nothing.
+   */
+  perform: (clip: string, seconds?: number) => boolean;
+  /** Counts a performance down. Call from the render loop. */
+  update: (dt: number) => void;
+  /** True while this is steering him rather than the wander. Anything asking
+   *  "may he walk" has to include it, or the end of a sentence hands the floor
+   *  back to the wander in the middle of a dance. */
+  readonly driving: boolean;
   /** Freeze the clip where it is, or let it run again. */
   hold: (on: boolean) => void;
   readonly holding: boolean;
@@ -94,6 +114,8 @@ export function createPoses(
 
   let clip: string | null = null;
   let holding = false;
+  /** Seconds left on a performance, or 0 when nobody is counting. */
+  let left = 0;
 
   const saved: SavedPose[] = (() => {
     try {
@@ -110,6 +132,8 @@ export function createPoses(
 
   const play = (next: string) => {
     if (!colin.clips.includes(next)) return;
+    // Whatever was being counted down is not what is playing any more.
+    left = 0;
     wander.halt();
     wander.config.enabled = false;
     // A clip that was frozen last time it was used still has timeScale 0 on it.
@@ -121,13 +145,47 @@ export function createPoses(
 
   const hold = (on: boolean) => {
     if (!clip) return;
+    // Freezing a performance is a decision to keep it, so stop counting.
+    if (on) left = 0;
     holding = on;
     colin.setTimeScale(clip, on ? 0 : 1);
+  };
+
+  const release = () => {
+    left = 0;
+    if (clip) colin.setTimeScale(clip, 1);
+    /* Cleared BEFORE the wander is asked, because what it is asked is whether
+       he may walk, and the answer now includes whether this is still driving
+       him. */
+    clip = null;
+    holding = false;
+    wander.config.enabled = canWander();
+    // Back to an idle now rather than whenever the wander's own pause happens
+    // to run out: a dance that keeps going for four seconds after it was
+    // released reads as the release not having worked.
+    wander.halt();
+  };
+
+  const perform = (next: string, seconds?: number) => {
+    if (!colin.clips.includes(next)) return false;
+    play(next);
+    const at = colin.timeOf(next);
+    left = Math.max(0.5, seconds ?? at?.duration ?? 3);
+    return true;
+  };
+
+  const update = (dt: number) => {
+    if (left <= 0) return;
+    left -= dt;
+    if (left <= 0) release();
   };
 
   return {
     groups: groups.filter((g) => g.poses.length),
     play,
+    perform,
+    update,
+    get driving() { return clip !== null; },
     hold,
     get holding() { return holding; },
     get clip() { return clip; },
@@ -140,12 +198,7 @@ export function createPoses(
       const at = colin.timeOf(clip);
       return at && at.duration ? at.time / at.duration : 0;
     },
-    release: () => {
-      if (clip) colin.setTimeScale(clip, 1);
-      clip = null;
-      holding = false;
-      wander.config.enabled = canWander();
-    },
+    release,
     saved,
     save: (name) => {
       if (!clip) return null;

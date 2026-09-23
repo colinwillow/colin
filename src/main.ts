@@ -224,10 +224,21 @@ try {
      whatever room he is standing in right now rather than whatever it was when
      the question was first wired up. */
   let stage: Stage | undefined;
-  const canWander = () => stage?.current.wander ?? true;
+  /* And whether anything else is already steering him. A held pose and a
+     spoken "do a dance" both take the wander off him, and without this the end
+     of a sentence hands it straight back — mid-dance. Assigned below, because
+     the thing it asks about is built from this. */
+  let posing: () => boolean = () => false;
+  const canWander = () => (stage?.current.wander ?? true) && !posing();
+
+  /* Built here rather than with the rest of the interface because the
+     conversation needs it: being told to do something is a conversation, and
+     this is what runs the clip. */
+  const poses = createPoses(colin, wander, canWander);
+  posing = () => poses.driving;
 
   const talk: Conversation = createConversation(
-    { endpoint: BRAIN, persona: PERSONA, face, alive, colin, wander, camera, canWander },
+    { endpoint: BRAIN, persona: PERSONA, face, alive, colin, wander, camera, poses, canWander },
   );
   if (talk.mouth) {
     console.log(`visemes — ${talk.mouth.rig} rig, ${talk.mouth.matched.length} shapes matched`
@@ -274,6 +285,9 @@ try {
        the write is asking rather than setting, which is what lets a blink and a
        viseme both have their say about the same face. */
     face.beginFrame();
+    // Before the conversation, which is what starts a performance: a clip that
+    // ran out this frame should be handed back this frame.
+    poses.update(dt);
     talk.update(dt);
     alive.update(dt, face);
     held();
@@ -354,7 +368,7 @@ try {
 
   const ui = createInterface({
     colin, face, alive, wander, talk, stage, shots, toon, look: appearance,
-    poses: createPoses(colin, wander, canWander),
+    poses,
     wardrobe: createWardrobe(colin.model),
     camera: photos,
     capabilities: CAPABILITIES,
@@ -364,7 +378,7 @@ try {
 
   // Debug handles. From the devtools console: kitchen.interactive.Fridge_Door,
   // kitchen.lightmapped[0].lightMapIntensity, new THREE.Raycaster(), ...
-  Object.assign(window, { renderer, kitchen, colin, wander, rig, face, alive, talk, roomLights, THREE, stage, shots, toon, ground, look: appearance, ui });
+  Object.assign(window, { renderer, kitchen, colin, wander, rig, face, alive, talk, roomLights, THREE, stage, shots, toon, ground, look: appearance, poses, ui });
 
   loading.classList.add('done');
   document.body.classList.add('ready');

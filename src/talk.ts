@@ -20,7 +20,9 @@ import { createMic, type Mic } from './mic';
 import { createMouth, type Mouth } from './visemes';
 import { createWave, type Wave } from './wave';
 import { moodFor, EXPRESSION_FOR, type Mood } from './mood';
+import { createCommands, type Command, type Commands } from './commands';
 import { nextIntro } from './intros';
+import type { Poses } from './poses';
 import type { FaceRig, Alive } from './face';
 import type { Character } from './character';
 import type { createWander } from './wander';
@@ -39,6 +41,10 @@ export interface TalkOptions {
   colin: Character;
   wander: Wander;
   camera: THREE.Camera;
+  /** The clips, and the thing that runs them. Without it he still talks; he
+   *  just cannot be told to do anything, and "do a dance" goes to the model
+   *  like any other sentence. */
+  poses?: Poses;
   /** Whether the scene he is standing in has a floor to walk on. Asked when a
    *  conversation ends, rather than assuming the answer is yes: a studio
    *  backdrop is one room he must not stroll out of. */
@@ -62,6 +68,8 @@ export interface Conversation {
   wave: Wave | null;
   /** What the last exchange put him in. Drives which idle he falls into. */
   readonly mood: Mood;
+  /** Orders he can take, resolved against the clips this export shipped. */
+  readonly commands: Commands | null;
 }
 
 /** How fast he turns to face you once you have said something, in degrees per
@@ -71,6 +79,19 @@ const ATTEND_DEG = 90;
 export function createConversation(opts: TalkOptions): Conversation {
   const { endpoint, persona, face, alive, colin, wander, camera } = opts;
   const canWander = opts.canWander ?? (() => true);
+
+  /* WHAT HE CAN BE TOLD TO DO, resolved against the clips that actually
+     loaded. An order never reaches the model — see commands.ts for why, and
+     for the fact that "like this" was the reason. */
+  const commands = opts.poses
+    ? createCommands({
+      clips: colin.clips,
+      poses: opts.poses,
+      wander,
+      canWalk: canWander,
+    })
+    : null;
+  if (commands) console.log(`commands — he can be told to: ${commands.able.join(', ')}`);
 
   const brain = createBrain(endpoint, persona);
   const voice = createVoice(endpoint, persona);
@@ -113,6 +134,9 @@ export function createConversation(opts: TalkOptions): Conversation {
   // Held from the moment a sentence is heard until the last sample has played:
   // this is what stops him wandering off and what turns him to face you.
   let engaged = false;
+  /** Whether the current engagement is holding him toward the camera. Off for
+   *  an order that is about going somewhere. */
+  let attending = true;
   let listening = false;
 
   /* The meter follows the MICROPHONE, not the engagement.
@@ -135,10 +159,13 @@ export function createConversation(opts: TalkOptions): Conversation {
   };
   const status = (text: string) => { if (say && !say.childNodes.length) say.textContent = text; };
 
-  const engage = (yes: boolean) => {
-    if (engaged === yes) return;
+  const engage = (yes: boolean, attend = true) => {
+    if (engaged === yes && attending === attend) return;
     engaged = yes;
-    if (yes) { wander.halt(); wander.config.enabled = false; }
+    attending = yes ? attend : true;
+    // Stopping him is what `attend` means. An order to walk across the room
+    // engages him without it, so he can answer and go at the same time.
+    if (yes) { if (attend) { wander.halt(); wander.config.enabled = false; } }
     // Not `true`: the scene is what decides whether he walks, and finishing a
     // sentence in a studio must not set him off across a backdrop.
     else wander.config.enabled = canWander();
@@ -175,6 +202,49 @@ export function createConversation(opts: TalkOptions): Conversation {
       cut = m.index + m[0].length;
     }
     return cut;
+  };
+
+  /**
+   * An order, carried out on the spot.
+   *
+   * THE MODEL NEVER SEES IT. It cannot move him, so asking it to do a dance
+   * got back a sentence claiming one had happened — "like this" — over a man
+   * standing perfectly still, which is worse than no answer at all. Matching
+   * here means the clip starts on the frame the sentence lands, and it makes
+   * an order the fastest thing in the app: no round trip to think, none to
+   * write, and a line that was already on the device.
+   *
+   * Both halves still go into the transcript even though neither came from the
+   * model, because the next thing said is usually about what just happened —
+   * "that was terrible" — and a model that was never told there was a dance has
+   * nothing to be rude about.
+   */
+  const obey = async (cmd: Command, heard: string) => {
+    if (brain.busy) return;
+    ears.mute();
+    engage(true, cmd.attend);
+    caption(heard, cmd.quip);
+    brain.remember('user', heard);
+    brain.remember('assistant', cmd.quip);
+
+    /* THE MOVE FIRST, then the words — which is the whole difference between
+       doing a thing and announcing one. */
+    cmd.run();
+    alive?.express(cmd.dodged ? 'doubtful' : 'amused', 4);
+    alive?.blinkNow();
+
+    await voice.arm();
+    const spoke = await voice.speak(cmd.quip);
+    // No voice, so nothing is going to call onEnd: hand hearing back here.
+    if (!spoke) { engage(false); ears.unmute(); }
+  };
+
+  /** Where a heard sentence goes. Almost everything is a conversation; the few
+   *  that are orders are answered without leaving the device. */
+  const route = (text: string) => {
+    const cmd = commands?.match(text);
+    if (cmd) { void obey(cmd, text); return; }
+    void answer(text);
   };
 
   const answer = async (heard: string) => {
@@ -286,7 +356,7 @@ export function createConversation(opts: TalkOptions): Conversation {
     alive?.express('listening', 1.2);
     alive?.lookAt(0, 0);
   };
-  ears.onSentence = (text) => { void answer(text); };
+  ears.onSentence = (text) => { route(text); };
   ears.onStatus = status;
 
   if (mic) {
@@ -348,7 +418,7 @@ export function createConversation(opts: TalkOptions): Conversation {
     voice.update();
     mouth?.update(dt, voice.shape());
     wave?.update(dt);
-    if (!engaged) return;
+    if (!engaged || !attending) return;
     // Turn to whoever is talking to him. The camera is the only stand-in for a
     // person we have.
     const toCamera = Math.atan2(
@@ -363,9 +433,9 @@ export function createConversation(opts: TalkOptions): Conversation {
   };
 
   return {
-    update, brain, voice, ears, mouth, wave, heard: listen,
+    update, brain, voice, ears, mouth, wave, heard: listen, commands,
     get mood() { return mood; },
-    say: (text: string) => { void answer(text); },
+    say: (text: string) => { route(text); },
     get listening() { return listening; },
   };
 }

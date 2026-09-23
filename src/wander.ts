@@ -131,6 +131,19 @@ export interface Wander {
   config: WanderConfig;
   /** Stop where he is and return to an idle. Used when he starts talking. */
   halt: () => void;
+  /**
+   * Set off across the room NOW, rather than when his own pause happens to end.
+   *
+   * The wander already does exactly this; it just does it on its own schedule,
+   * and a schedule is the wrong answer to somebody saying "come here". The
+   * preference biases which of the sampled targets is taken — `near` is toward
+   * the camera, `far` is away from it — because the clips are all in-place and
+   * the only thing that moves him across a floor is this.
+   *
+   * False when there was nowhere worth walking to, or when going there would
+   * turn his back on the room. `config.enabled` is the caller's to set.
+   */
+  stroll: (prefer?: 'near' | 'far') => boolean;
   readonly phase: Phase;
   readonly target: THREE.Vector3;
 }
@@ -296,19 +309,33 @@ export function createWander(
   };
   const rand = (lo: number, hi: number) => lo + Math.random() * (hi - lo);
 
-  const chooseTarget = () => {
+  const chooseTarget = (prefer?: 'near' | 'far') => {
     const a = config.area;
     // Far enough away to be worth walking to: short hops read as fidgeting, and
     // at 0.62 m/s a half-metre target is over before it registers.
     let best: THREE.Vector3 | null = null;
     let bestDistance = 0;
+    /* Asked for a direction, every candidate is looked at instead of the first
+       acceptable one being taken: "come here" is a request about WHERE he ends
+       up, so the pick is the nearest the room allows rather than the first spot
+       that happened to be far enough to be worth the walk. The camera is at a
+       bigger z than he is, so nearer the lens IS a bigger z. */
+    let bestFor: THREE.Vector3 | null = null;
+    let bestScore = -Infinity;
     for (let i = 0; i < 16; i++) {
       const p = new THREE.Vector3(rand(a.minX, a.maxX), 0, rand(a.minZ, a.maxZ));
       const d = p.distanceTo(colin.root.position);
+      if (prefer) {
+        if (d < 0.5) continue;
+        const score = prefer === 'near' ? p.z : -p.z;
+        if (score > bestScore) { bestScore = score; bestFor = p; }
+        continue;
+      }
       if (d > 1.1) return p;
       // Nothing far enough: keep the furthest rather than standing there.
       if (d > bestDistance) { best = p; bestDistance = d; }
     }
+    if (prefer) return bestFor;
     return bestDistance > 0.5 ? best : null;
   };
 
@@ -586,10 +613,25 @@ export function createWander(
     colin.root.position.addScaledVector(toTarget.normalize(), Math.min(config.speed * dt, distance));
   };
 
+  const stroll = (prefer?: 'near' | 'far') => {
+    const next = chooseTarget(prefer);
+    if (!next) return false;
+    const yaw = faceOf(next);
+    // The rule that he never shows the room his back is not suspended by being
+    // asked to move: a spot he cannot face is a spot he does not go to.
+    if (!withinFacingLimit(yaw)) return false;
+    target.copy(next);
+    facing = yaw;
+    pendingWalk = true;
+    // `beginTurn` sets the phase, either to the pivot or straight to walking.
+    beginTurn(angleDelta(colin.root.rotation.y, yaw));
+    return true;
+  };
+
   matchStrideToSpeed();
   colin.play(pickIdle(), 0);
   return {
-    update, applyRootMotion, config, halt,
+    update, applyRootMotion, config, halt, stroll,
     get moodIdle() { return moodIdle; },
     set moodIdle(v: Mood) { moodIdle = v; },
     get phase() { return phase; },
