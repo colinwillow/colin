@@ -45,9 +45,9 @@ export interface LookConfig {
    room with no direct light in it ever showed. */
 export const DEFAULT_LOOK: LookConfig = {
   brightness: 1.2,
-  emission: 1.26,
+  emission: 2.5,
   environment: 1.1,
-  roughness: 0.61,
+  roughness: 0.8,
   saturation: 1.1,
   key: 2.68,
   fill: 1.75,
@@ -90,7 +90,12 @@ export interface LookParts {
   toon: Toon;
 }
 
-const KEY = 'colin.look.v1';
+/* BUMPED WHEN THE DEFAULTS CHANGE, and that is the whole reason it carries a
+   number. These are remembered, so a new default lands on a device that has
+   never run the app and on no other one — the saved object wins every key it
+   has, which is every key. Changing the table without changing this is a change
+   that ships to nobody who has already used it. */
+const KEY = 'colin.look.v2';
 
 export function createLook(parts: LookParts): Look {
   const { colin, lights, curve, characterScene, sky, toon } = parts;

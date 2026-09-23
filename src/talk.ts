@@ -301,6 +301,7 @@ export function createConversation(opts: TalkOptions): Conversation {
     felt(heard, cmd.quip);
 
     await voice.arm();
+    ears.spoke(cmd.quip);
     const spoke = await voice.speak(cmd.quip);
     // No voice, so nothing is going to call onEnd: hand hearing back here.
     if (!spoke) { engage(false); ears.unmute(); }
@@ -352,7 +353,9 @@ export function createConversation(opts: TalkOptions): Conversation {
            them makes the seams audible. Below this, wait for the next one. */
         if (cut > sent && cut - sent >= 24) {
           if (!firstSpoken) firstSpoken = performance.now() - asked;
-          speech.push(soFar.slice(sent, cut));
+          const piece = soFar.slice(sent, cut);
+          ears.spoke(piece);
+          speech.push(piece);
           sent = cut;
         }
       });
@@ -368,6 +371,7 @@ export function createConversation(opts: TalkOptions): Conversation {
     const tail = reply.slice(sent).trim();
     if (tail) {
       if (!firstSpoken) firstSpoken = performance.now() - asked;
+      ears.spoke(tail);
       speech.push(tail);
     }
     speech.close();
@@ -475,6 +479,9 @@ export function createConversation(opts: TalkOptions): Conversation {
            who is there, and the answer arrives as a bare name with nothing in
            front of it unless the model can see what it is answering. */
         brain.remember('assistant', line);
+        // On file as his, so that if it comes back through the microphone it is
+        // recognised rather than answered.
+        ears.spoke(line);
         const spoke = await voice.speak(line);
         // No voice available: no reason to make anyone wait for one.
         if (!spoke) { engage(false); openEars(); }

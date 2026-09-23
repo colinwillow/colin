@@ -18,12 +18,23 @@
 //   stops there. Wiring a live microphone to the output is a feedback loop with
 //   a face.
 //
-//   IT ASKS FOR RAW AUDIO. Echo cancellation, noise suppression and automatic
-//   gain are all off, and that is deliberate — they are three different ways of
-//   flattening exactly the dynamics being drawn. AGC in particular pushes a
-//   whisper and a shout to the same level, which is the opposite of a meter.
+//   IT ASKS FOR RAW AUDIO, EXCEPT FOR THE ECHO CANCELLER. Noise suppression and
+//   automatic gain are off, and that is deliberate — they are two different ways
+//   of flattening exactly the dynamics being drawn, and AGC in particular pushes
+//   a whisper and a shout to the same level, which is the opposite of a meter.
 //   What makes raw audio usable is the moving noise floor in `audio.ts`: with a
 //   fixed threshold the room would sit a quarter of the way up the screen.
+//
+//   Echo cancellation used to be off with them, on the grounds that all three
+//   are "processing". THAT WAS WRONG AND IT COST HIM THE CONVERSATION. The
+//   other two act on your voice; this one subtracts the audio the page is
+//   PLAYING, which is a different job entirely and does nothing to the dynamics
+//   of anything you say. Worse, a page holding one un-cancelled capture gets an
+//   un-cancelled capture everywhere — iOS runs a single audio session for the
+//   whole page, and the speech recogniser is in it — so this flag turned off
+//   the echo canceller for the thing that hears sentences. He heard himself
+//   through the speaker, took it for somebody talking, and answered as though
+//   he were being repeated back at himself.
 //
 // The stream stays open once it has been opened. Stopping the tracks turns the
 // browser's recording indicator off, which sounds polite until you notice that
@@ -53,9 +64,10 @@ export function createMic(): Mic {
     if (refused || !navigator.mediaDevices?.getUserMedia) return false;
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        // Raw. See the note above: every one of these three is a way of
-        // flattening the thing being measured.
-        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+        // Raw where raw matters. See the note above: the two that are off are
+        // the two that flatten what is being measured, and the one that is on
+        // is the one that keeps him from hearing himself.
+        audio: { echoCancellation: true, noiseSuppression: false, autoGainControl: false },
       });
     } catch {
       // Denied, or no device. Either way this asks once and never again.

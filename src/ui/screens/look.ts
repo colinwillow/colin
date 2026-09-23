@@ -38,7 +38,9 @@ const GROUPS: { id: string; name: string; knobs: Knob[] }[] = [
     name: 'Surface',
     knobs: [
       { key: 'roughness', label: 'Roughness', min: 0.05, max: 1, step: 0.01 },
-      { key: 'emission', label: 'Emission', min: 0, max: 2.5, step: 0.01, percent: true },
+      /* Up to 400%, because the default is 250 and a slider whose default sits
+         on its own end stop is a slider that only goes down. */
+      { key: 'emission', label: 'Emission', min: 0, max: 4, step: 0.01, percent: true },
       { key: 'environment', label: 'Environment', min: 0, max: 2.5, step: 0.01, percent: true },
     ],
   },

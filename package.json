@@ -14,7 +14,8 @@
     "ui-tour": "node scripts/ui-tour.mjs",
     "latency-check": "node scripts/latency-check.mjs",
     "command-check": "node scripts/command-check.mjs",
-    "mood-check": "node scripts/mood-check.mjs"
+    "mood-check": "node scripts/mood-check.mjs",
+    "echo-check": "node scripts/echo-check.mjs"
   },
   "dependencies": {
     "three": "^0.185.0"

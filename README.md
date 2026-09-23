@@ -684,11 +684,50 @@ personality and his cloned voice inside the Worker.
    which is exactly his own voice coming back through the speaker.
 2. **Stop him walking.** `wander.config.enabled = false` plus `wander.halt()`,
    and he turns to face the camera at 90°/s — attention, not a manoeuvre.
-3. **Speak, then hand the microphone back** after an 850 ms echo tail.
+3. **Speak, then hand the microphone back** after a 1200 ms echo tail.
 
 Recognition's own `isFinal` waits for the room to go quiet, and a room with a
 fridge in it never does, so the end of a sentence is decided here instead: the
 transcript has stopped changing for `gapMs` (620 ms).
+
+### When he hears himself
+
+He did, and the symptom was unmistakable: he answered as if he were being
+repeated back at himself. Two causes, and the second is the one worth writing
+down.
+
+**The meter's microphone stream asked for the echo canceller to be off.** All
+three constraints were switched off together on the grounds that all three are
+"processing" — and that was wrong. Noise suppression and AGC act on *your*
+voice, which is what the meter is drawing, so they stay off. Echo cancellation
+subtracts the audio the page is *playing*, which is a different job and does
+nothing to anybody's dynamics. And it is not local: iOS runs one audio session
+for the whole page, so one un-cancelled capture takes the canceller off the
+speech recogniser too. One flag.
+
+**The timing gates alone were never going to hold**, whatever the canceller
+does. They assume recognition hands over an utterance promptly, and it does not
+— it holds one open until it decides it has finished, so audio picked up while
+he was talking can arrive *seconds* after he stopped, by which time the mute,
+the swallow window and the echo tail have all expired. So `listen.ts` keeps the
+last few things he said and drops a sentence that lines up with one of them.
+
+The match is a **longest common subsequence over the heard words**, needing 70%.
+In order is what makes it safe: recognition of his own audio gives a different
+transcript than the text that was spoken — it drops words, splits contractions
+and runs sentences together — so an exact match catches almost nothing, and a
+bag-of-words match catches ordinary agreement ("yeah, the kitchen"). A
+subsequence is loose about the gaps and strict about the order, which is the
+shape a garbled recording of a known sentence actually has.
+
+A filter in front of the model can eat real speech, which is a worse bug than
+the one it fixes, so `npm run echo-check` is mostly the rejection table:
+agreeing with him, asking about the thing he just mentioned, and quoting him
+back on purpose all have to survive. It also caught a real one — his written
+lines carry a typographic apostrophe and recognition returns a straight one, so
+"I’m" was being split into two one-letter tokens and thrown away, and a
+three-word greeting arrived as one word: not enough to identify, so a genuine
+echo went through.
 
 ### Why the mouth is timed from the text
 
@@ -788,10 +827,11 @@ fixed floor throw the entire voice away.
 
 Two consequences worth knowing:
 
-- **The microphone asks for RAW audio** — echo cancellation, noise suppression
-  and automatic gain all off. Every one of the three is a way of flattening
-  exactly the dynamics being drawn, and AGC in particular pushes a whisper and a
-  shout to the same level. What makes raw usable is the moving floor.
+- **The microphone asks for RAW audio, except for the echo canceller** — noise
+  suppression and automatic gain are off, because both flatten exactly the
+  dynamics being drawn and AGC in particular pushes a whisper and a shout to the
+  same level. What makes raw usable is the moving floor. Echo cancellation is
+  on, and used not to be; see *When he hears himself* above for what that cost.
 - **Both analysers are read every frame**, whoever is talking. An analyser that
   is not being drawn still has to keep its history moving, or the floor restarts
   from nothing at every change of turn and the first second of every sentence is
@@ -861,6 +901,7 @@ npm run mic-check -- http://127.0.0.1:4173/        # the push-to-talk path
 npm run latency-check -- http://127.0.0.1:4173/    # does he start before the reply ends
 npm run command-check -- http://127.0.0.1:4173/    # does he do what he is told, and only then
 npm run mood-check -- http://127.0.0.1:4173/       # does he feel anything, and does it show
+npm run echo-check -- http://127.0.0.1:4173/       # does he hear himself, and only himself
 ```
 
 It stops the render loop before it samples: software WebGL draws about one frame
@@ -1071,10 +1112,16 @@ with him standing there while you drag.
 
 The defaults are **not neutral ones**. They were dialled in on a phone, on the
 Paper backdrop, and then written into `DEFAULT_LOOK`: nearly three times the key
-light, half again the fill, and a surface a good deal less matte than the scene
-table's. That table was tuned against a dark baked kitchen where he needed almost
-none of this, and standing on a pale sweep is a different problem. *Reset* means
-back to those, not back to whatever number happens to be in the GLB.
+light, half again the fill, emission at 250%, and roughness at 0.8 — matching
+the Blender setup rather than the scene table's 0.61. That table was tuned
+against a dark baked kitchen where he needed almost none of this, and standing
+on a pale sweep is a different problem. *Reset* means back to those, not back to
+whatever number happens to be in the GLB.
+
+The storage key carries a version (`colin.look.v2`) and **it has to be bumped
+whenever those defaults change**. The saved object wins every key it has, which
+is every key, so a new default otherwise lands on a device that has never run
+the app and on no other one.
 
 **The room sets the baseline and this sets the taste.** That distinction is the
 whole design. `stage.ts` writes exposure, emission, environment and the three
