@@ -20,6 +20,7 @@ import { createStage, type Stage } from './stage';
 import { createToon, type Toon } from './toon';
 import { createGround, type Ground } from './ground';
 import { createLook } from './look';
+import { samplePalette } from './palette';
 import { createPoses } from './poses';
 import { createWardrobe } from './wardrobe';
 import { createCamera } from './photos';
@@ -336,6 +337,20 @@ try {
   });
   stage.onScene = (base) => appearance.setBase(base);
   appearance.setBase(stage.base);
+
+  /* The meter takes its colours off his coat.
+     Read from the outfit's own texture rather than written down, so a
+     re-export with a different jacket moves the meter with it — and sampled
+     from the largest map he has, which is the one with the pattern on it. A
+     compressed texture has no pixels to read from JavaScript, in which case
+     nothing comes back and the ink-and-cream default stands. */
+  const outfit = colin.materials.find((m) => m.name === 'outfit') ?? colin.materials[0];
+  const swatches = samplePalette(outfit?.map ?? null);
+  if (swatches.length) {
+    talk.wave?.setPalette(swatches);
+    console.log(`palette — ${swatches.length} off his ${outfit?.name ?? 'clothes'}: `
+      + swatches.map((sw) => `#${sw.color.getHexString()}`).join(' '));
+  }
 
   const ui = createInterface({
     colin, face, alive, wander, talk, stage, shots, toon, look: appearance,

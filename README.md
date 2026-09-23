@@ -988,12 +988,34 @@ room behind them without being able to read it. The alpha is still the contrast
 budget, so there is a floor under how far that can go before dark text on the
 Slate backdrop stops working.
 
-The meter is the same three colours, and that is practical as much as
-aesthetic: **the ink line survives anything pale, the cream one survives anything
-dark, and the beige sits between them.** No backdrop in the table can hide all
-three. Whose turn it is comes through as temperature rather than hue — yours
-neutral, his warm — and the glow behind the lines is paper-coloured rather than
-coloured, so it reads as legibility rather than as neon.
+The meter takes its hues **off his jacket**. That coat is the most interesting
+thing on screen — rust, ochre, a mauve, a teal — and the three lines under him
+were painted from a palette somebody picked by eye, which is a match that has to
+be maintained. `src/palette.ts` reads the outfit texture instead, so the two
+agree by construction and keep agreeing through a re-export with a different
+coat, with nothing here to edit.
+
+What it looks for is **not the average colour**. The average of that sheet is
+mud: it is a whole outfit on one texture, mostly beige hoodie and navy jeans, and
+averaging a rust next to a teal gives grey. Pixels are bucketed by hue and
+weighted by saturation, with the very light and very dark thrown out as
+highlights and shadows of some other colour, and neighbouring buckets collapsed
+so a gradient cannot win three places with one hue. Off the current model that
+finds six: `#bb8975 #405a81 #7d535f #477985 #afa587 #645972`.
+
+**The ladder is the legibility and the hues are the decoration.** The three lines
+stay at fixed values — dark, mid, light — whatever comes back, because the darkest
+survives anything pale, the lightest survives anything dark, and the middle is
+held well clear of the beige backdrop: a line the same value as what is behind it
+is not a line. Sampling decides which colour each one is, never where it sits.
+Saturation is a **ceiling rather than a target**, which is most of the character:
+forcing the sampled hues up to a fixed number turned the jacket's mauve into
+bubblegum, so each line keeps its own swatch's saturation unless the rung will
+not take it. Whose turn it is still comes through as temperature — the warm half
+of the coat is him talking, the cool half is you, and neither leaves the garment.
+If the texture cannot be read back at all, nothing comes back and the original
+ink-and-cream palette stands. The glow behind the lines stays paper-coloured
+rather than coloured, so it reads as legibility rather than as neon.
 
 ## The other way he could look
 

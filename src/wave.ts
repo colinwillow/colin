@@ -19,6 +19,7 @@
 // is, and that is the part that actually made this reactive. Everything below is
 // drawing.
 import { createFeatureReader, type Features } from './audio';
+import { atLightness, isWarm, type Swatch } from './palette';
 
 export type WaveMode = 'idle' | 'listening' | 'speaking';
 
@@ -34,6 +35,25 @@ interface Palette {
   lines: [string, string, string];
   glow: string;
 }
+
+/** Where the three lines sit on the value scale, dark to light.
+ *
+ *  THE LADDER IS THE LEGIBILITY AND THE HUES ARE THE DECORATION. The darkest
+ *  line survives anything pale, the lightest survives anything dark, and the
+ *  middle one is held well clear of the beige backdrop — a line the same value
+ *  as what is behind it is not a line. Sampling his jacket changes what colour
+ *  each of the three is, never where it sits. */
+const LADDER = [0.2, 0.44, 0.88];
+/** A CEILING, not a target, and the difference is the whole character of the
+ *  thing. Forcing the sampled hues UP to a fixed saturation turned a muted
+ *  jacket mauve into bubblegum: the colours on that coat are dusty, and a
+ *  palette taken off it should be dusty too. Each line keeps its swatch's own
+ *  saturation unless that is higher than the rung allows. The lightest is capped
+ *  hardest because a saturated colour at that value is a pastel, and a pastel on
+ *  a beige sweep is nothing at all. */
+const SATURATION_CAP = [0.5, 0.42, 0.26];
+/** And a floor, or a nearly-grey swatch gives a nearly-grey line. */
+const MIN_SATURATION = 0.16;
 
 /**
  * Ink, beige and cream — the same three the interface is built from.
@@ -66,6 +86,9 @@ export interface WaveSources {
 export interface Wave {
   update: (dt: number) => void;
   meter: Meter;
+  /** Repaint from colours sampled off his clothes. Anything it cannot fill in
+   *  keeps the ink-and-cream default. */
+  setPalette: (swatches: Swatch[]) => void;
   /** Call when the recogniser hears something. Only does anything when there is
    *  no microphone to read instead. */
   heard: () => void;
@@ -92,6 +115,12 @@ const SHAPE = [
 export function createWave(canvas: HTMLCanvasElement, sources: WaveSources): Wave {
   const ctx = canvas.getContext('2d');
   const meter: Meter = { mode: 'idle', energy: 0 };
+  /** Repainted by `setPalette`; the defaults above until then. */
+  const colours: Record<WaveMode, Palette> = {
+    idle: { ...COLOURS.idle },
+    listening: { ...COLOURS.listening },
+    speaking: { ...COLOURS.speaking },
+  };
 
   const mine = createFeatureReader(BANDS);
   const his = createFeatureReader(BANDS);
@@ -161,7 +190,7 @@ export function createWave(canvas: HTMLCanvasElement, sources: WaveSources): Wav
       shownImpulse *= Math.pow(0.1, dt);
     }
 
-    const palette = COLOURS[mode];
+    const palette = colours[mode];
     ctx.clearRect(0, 0, w, h);
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -217,5 +246,43 @@ export function createWave(canvas: HTMLCanvasElement, sources: WaveSources): Wav
     ctx.shadowBlur = 0;
   };
 
-  return { update, meter, heard: () => { meter.energy = Math.min(1, meter.energy + 0.5); } };
+  /**
+   * Take the hues off his clothes.
+   *
+   * His jacket has both halves of the wheel in it, so the two speakers can each
+   * have their own without either leaving the garment: the warm side — the rust
+   * and the ochre — is him talking, and the cool side is you. Which is not only
+   * pretty. It is the same trick the default palette used, where his turn was
+   * warm and yours was neutral, done with colours that are actually in the room.
+   */
+  const setPalette = (swatches: Swatch[]) => {
+    if (!swatches.length) return;
+    const warm = swatches.filter((s) => isWarm(s.hue));
+    const cool = swatches.filter((s) => !isWarm(s.hue));
+
+    const three = (from: Swatch[], fallback: Swatch[]) => {
+      const pool = from.length ? from : fallback;
+      if (!pool.length) return null;
+      // Fewer than three distinct hues is normal — a coat can be two colours —
+      // so the pool cycles rather than the palette going short.
+      return LADDER.map((l, i) => {
+        const swatch = pool[i % pool.length];
+        const saturation = Math.min(SATURATION_CAP[i], Math.max(MIN_SATURATION, swatch.saturation));
+        return atLightness(swatch, l, saturation);
+      }) as [string, string, string];
+    };
+
+    const hot = three(warm, cool);
+    const cold = three(cool, warm);
+    if (hot) colours.speaking = { lines: hot, glow: COLOURS.speaking.glow };
+    if (cold) colours.listening = { lines: cold, glow: COLOURS.listening.glow };
+    console.log(`meter — his ${hot?.join(' ') ?? '(default)'} · yours ${cold?.join(' ') ?? '(default)'}`);
+  };
+
+  return {
+    update,
+    meter,
+    setPalette,
+    heard: () => { meter.energy = Math.min(1, meter.energy + 0.5); },
+  };
 }
