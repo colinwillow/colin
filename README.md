@@ -54,7 +54,7 @@ src/kitchenEnvironment.ts       loads the GLB, wires up lightmaps and the HDR pr
 src/character.ts                loads Colin, fits him to height, contact shadow
 src/wander.ts                   walks him around the room on his own
 src/face.ts                     his face: the shape rig, blinks, gaze, expressions
-src/mood.ts                     what the conversation leaves him in
+src/mood.ts                     how he is feeling: two numbers with inertia
 src/commands.ts                 being told to do something, and him doing it
 src/wave.ts                     the level meter along the bottom
 src/talk.ts                     the conversation: ears -> brain -> voice -> mouth
@@ -860,6 +860,7 @@ npm run talk-check -- http://127.0.0.1:4173/
 npm run mic-check -- http://127.0.0.1:4173/        # the push-to-talk path
 npm run latency-check -- http://127.0.0.1:4173/    # does he start before the reply ends
 npm run command-check -- http://127.0.0.1:4173/    # does he do what he is told, and only then
+npm run mood-check -- http://127.0.0.1:4173/       # does he feel anything, and does it show
 ```
 
 It stops the render loop before it samples: software WebGL draws about one frame
@@ -872,6 +873,76 @@ The tuning panel has a **Talking** folder: type a line into *say to him* and
 press *send*. It takes exactly the path a spoken sentence does, minus the
 recogniser, and asks for no permissions at all. From the console,
 `talk.say('...')`, `talk.voice.stop()` and `talk.brain.forget()`.
+
+### How he is feeling, and what it makes him do
+
+`src/mood.ts`. The old version read six keywords off an exchange, picked one of
+six names and threw it away on the next turn — so he had no memory of being
+insulted, no way to be *slightly* pleased, and nothing that could build. You
+could call him an idiot four times running and get the same flicker of a frown
+each time.
+
+**It is two numbers and some inertia**, which is most of what a mood is:
+
+```
+valence  −1 hurt  ……  0  ……  +1 delighted
+energy   −1 flat  ……  0  ……  +1 wired
+```
+
+Two axes rather than one slider because the pair is what separates the feelings
+that matter. **Sad and cross are both unhappy and they are not remotely the same
+face** — sad is low energy, cross is high — and content and delighted are the
+same difference the other way up. One slider can only go from frown to smile,
+and he could never be annoyed.
+
+Everything said moves them a little and nothing snaps, so four insults land four
+times harder than one, and it all drifts back toward level on its own — a
+105-second half-life for the mood, 55 for the energy, because energy settles
+faster than mood does in people too. That decay is most of what makes it read as
+a mood rather than a state machine.
+
+**His face is a blend of the two, every frame.** Four corner poses and the
+middle of the top edge — a grin, a small warm smile, a scowl, a sad face, and
+wide-eyed — mixed by where the numbers are, so half a smile is genuinely half of
+those weights and pleased-but-tired lands between the grin and the quiet one.
+This runs *under* the transient expressions rather than instead of them: an
+expression is a beat and a mood is a state, and a face that only does
+two-second beats and returns to dead level between them is a face nobody is
+behind.
+
+The amplitude dial (`alive.config.feeling`) defaults to **1.5, above one on
+purpose**. Measured across a rendered frame, a full smile on this rig changes
+19% of the pixels on his face and a full brow drop changes 12% — so at the
+authored weights a strong mood came out as a clear grin and two kinds of
+almost-nothing, with cross and sad indistinguishable. What the gain really buys
+is the middle of the range; the strongest shapes clip at the extremes, which is
+the right trade.
+
+**And he does things nobody asked for.** `commands.ts` has the other end of the
+same machinery: `match` is him being told, `suggest` is him deciding. Mention a
+song and he might start dancing; mention the gym and he might break into a run.
+*Might* — a reaction that fires every time is a command with extra steps, and
+the fastest way to make a trick tiresome. Each cue carries its own odds (a song
+is about 55%), it only ever picks a move the export can actually do, nothing is
+said over it (a man who announces that a song made him want to dance has ruined
+it), and there is a **38-second floor between two of them** or a conversation
+about music is a man who never stops dancing. It fires when the voice stops
+rather than when the sentence lands: breaking into a dance mid-word looks like a
+bug, and doing it just after he finishes looks like a thought.
+
+The mood also rides along with every question to the model, as `state.mood`, so
+four insults in a row do not get the same breezy line he would have written
+first thing. `persona/colin.md` says what to do with it.
+
+`npm run mood-check` is the harness: that a remark is a lean and four are a
+lurch, that it wears off, that the four corners are measurably different faces
+on the real morph targets, and that twelve songs in a row produce exactly one
+dance.
+
+The Mood screen is **two sliders and six shortcuts to positions on them**, with
+a reading of where he has actually drifted to — because the conversation is
+moving the same two numbers the whole time, and a preset that stays lit while he
+has wandered off is a lie.
 
 ### Telling him to do something
 

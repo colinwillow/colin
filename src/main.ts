@@ -22,6 +22,7 @@ import { createGround, type Ground } from './ground';
 import { createLook } from './look';
 import { samplePalette } from './palette';
 import { createPoses } from './poses';
+import { createFeelings } from './mood';
 import { createWardrobe } from './wardrobe';
 import { createCamera } from './photos';
 import { createInterface } from './ui';
@@ -237,8 +238,14 @@ try {
   const poses = createPoses(colin, wander, canWander);
   posing = () => poses.driving;
 
+  /* Two numbers with some inertia, and everything that reads as him having an
+     inner life hangs off them: his face is a blend of them every frame, the
+     idle he falls into is the nearest word for them, and a conversation that
+     turns sour turns him with it rather than flickering per sentence. */
+  const feelings = createFeelings();
+
   const talk: Conversation = createConversation(
-    { endpoint: BRAIN, persona: PERSONA, face, alive, colin, wander, camera, poses, canWander },
+    { endpoint: BRAIN, persona: PERSONA, face, alive, colin, wander, camera, poses, feelings, canWander },
   );
   if (talk.mouth) {
     console.log(`visemes — ${talk.mouth.rig} rig, ${talk.mouth.matched.length} shapes matched`
@@ -289,6 +296,11 @@ try {
     // ran out this frame should be handed back this frame.
     poses.update(dt);
     talk.update(dt);
+    /* Drift back toward level, and hand the result to the two things that read
+       it: his face every frame, and the wander whenever it next picks an idle. */
+    feelings.update(dt);
+    alive.setFeeling(feelings.valence, feelings.energy);
+    wander.moodIdle = feelings.label;
     alive.update(dt, face);
     held();
     face.commit();
@@ -369,6 +381,7 @@ try {
   const ui = createInterface({
     colin, face, alive, wander, talk, stage, shots, toon, look: appearance,
     poses,
+    feelings,
     wardrobe: createWardrobe(colin.model),
     camera: photos,
     capabilities: CAPABILITIES,
@@ -378,7 +391,7 @@ try {
 
   // Debug handles. From the devtools console: kitchen.interactive.Fridge_Door,
   // kitchen.lightmapped[0].lightMapIntensity, new THREE.Raycaster(), ...
-  Object.assign(window, { renderer, kitchen, colin, wander, rig, face, alive, talk, roomLights, THREE, stage, shots, toon, ground, look: appearance, poses, ui });
+  Object.assign(window, { renderer, kitchen, colin, wander, rig, face, alive, talk, roomLights, THREE, stage, shots, toon, ground, look: appearance, poses, feelings, ui });
 
   loading.classList.add('done');
   document.body.classList.add('ready');

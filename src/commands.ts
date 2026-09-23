@@ -63,6 +63,21 @@ export interface Commands {
   /** Match a heard sentence. Null when it was not an order, which is most of
    *  them — that is the case where the model still gets the sentence. */
   match: (heard: string) => Command | null;
+  /**
+   * What an exchange makes him feel like doing, unasked. Null almost always.
+   *
+   * THIS IS THE OPPOSITE END OF THE SAME MACHINERY. `match` is him being told;
+   * this is him deciding, which is the whole difference between a puppet and
+   * something that seems to be in the room. Mention a song and he might start
+   * dancing — might, because a reaction that fires every time is just a command
+   * with extra steps, and one that fires every time is the fastest way to make
+   * a trick tiresome.
+   *
+   * It only ever returns a move the export can actually do: nobody asked, so
+   * there is nothing to dodge, and a joke about a backflip nobody requested is
+   * a non sequitur rather than a bit.
+   */
+  suggest: (heard: string, reply: string) => Command | null;
   /** The moves this export turned out to support, for the console. */
   readonly able: string[];
 }
@@ -193,6 +208,34 @@ const GO = [
   { id: 'closer', match: /\b(come (here|closer|over)|get closer|step (forward|closer|up)|over here|nearer)\b/, prefer: 'near' as const },
   { id: 'back', match: /\b(back (up|off|away)|step back|go away|move away|give me (some )?(space|room)|further)\b/, prefer: 'far' as const },
   { id: 'walk', match: /\b(walk( around| about)?|pace|move around|wander|stretch your legs|go for a walk|explore)\b/, prefer: undefined },
+];
+
+/**
+ * What a subject makes him feel like doing.
+ *
+ * Nobody asked for any of these, which changes the rules. The chance is there
+ * so he is capricious rather than mechanical; the move has to already exist in
+ * the export or nothing happens at all; and there is no line over the top,
+ * because a man who announces that a song made him want to dance has ruined it.
+ *
+ * Matched against BOTH halves of the exchange. He is as entitled to be set off
+ * by his own answer as by the question — more, probably, since the thing he
+ * chose to bring up is the thing he is thinking about.
+ */
+const REACTIONS: { move: string; match: RegExp; chance: number; seconds?: number }[] = [
+  { move: 'dance', match: /\b(song|songs|music|album|band|beat|track|tune|playlist|dj|concert|gig|spotify|banger|chorus|remix|vinyl|record|guitar|drums|bass line|melody)\b/, chance: 0.55, seconds: 6 },
+  { move: 'dance', match: /\b(party|parties|club|clubbing|rave|celebrat\w*|birthday|new year|wedding|festival|friday night|dance floor)\b/, chance: 0.5, seconds: 6 },
+  { move: 'hiphop', match: /\b(hip ?hop|rap|rapper|beatbox|breakdanc\w*|street)\b/, chance: 0.5, seconds: 6 },
+  { move: 'run', match: /\b(run\w*|marathon|gym|workout|training|race|sprint\w*|exercise|football|basketball|soccer|tennis|cardio|treadmill|fitness|sports?)\b/, chance: 0.45, seconds: 4 },
+  { move: 'backflip', match: /\b(stunt\w*|gymnast\w*|parkour|skateboard\w*|trick|circus|acrobat\w*|trampoline)\b/, chance: 0.5 },
+  { move: 'tired', match: /\b(tired|exhaust\w*|knackered|long day|no sleep|insomnia|monday|overtime|deadline|burn\w* out)\b/, chance: 0.4, seconds: 5 },
+  { move: 'sulk', match: /\b(gutted|miserable|depress\w*|awful|terrible|the worst|rubbish|went badly|fell through|rejected)\b/, chance: 0.35, seconds: 5 },
+  { move: 'wave', match: /\b(goodbye|bye|see you|see ya|later|so long|farewell|nice to meet|good to meet)\b/, chance: 0.5 },
+  { move: 'kneel', match: /\b(beg\w*|marry|proposal|propose|pray\w*|worship|on my knees)\b/, chance: 0.4, seconds: 4 },
+  { move: 'tiptoe', match: /\b(quiet|shh+|secret|sneak\w*|whisper\w*|asleep|tip ?toe|burglar|ninja)\b/, chance: 0.35, seconds: 5 },
+  { move: 'swagger', match: /\b(fashion|outfit|jacket|clothes|style|catwalk|photoshoot|looking good)\b/, chance: 0.3, seconds: 5 },
+  { move: 'twerk', match: /\b(beyonc\w*|shakira|booty|twerk\w*)\b/, chance: 0.5, seconds: 5 },
+  { move: 'wiggle', match: /\b(nervous|impatient|fidget\w*|can't sit|cant sit|antsy|restless)\b/, chance: 0.35, seconds: 5 },
 ];
 
 const STOP = /\b(stop|stand still|stay still|stand there|quit it|pack it in|knock it off|cut it out|enough|that's enough|behave|be normal|be still|calm down|relax|freeze)\b/;
@@ -361,6 +404,30 @@ export function createCommands(craft: Stagecraft): Commands {
     return `${said.charAt(0).toUpperCase()}${said.slice(1)}. Ask for a backflip and find out what happens.`;
   };
 
+  const byId = new Map(MOVES.map((m) => [m.id, m]));
+
+  /** Everything a subject suggested, so the choice is among all of them rather
+   *  than whichever happens to be listed first. */
+  const suggest = (heard: string, reply: string): Command | null => {
+    const t = `${normalize(heard)} ${normalize(reply)}`;
+    if (!t.trim()) return null;
+    const hits = REACTIONS.filter((r) => r.match.test(t) && found.get(r.move)?.length);
+    if (!hits.length) return null;
+    const chosen = hits[Math.floor(Math.random() * hits.length)];
+    if (Math.random() > chosen.chance) return null;
+    const move = byId.get(chosen.move)!;
+    const clips = found.get(move.id)!;
+    return {
+      id: move.id,
+      // Nothing is said over it. He did not offer, he was not asked, and
+      // announcing it is the difference between a person and a demonstration.
+      quip: '',
+      dodged: false,
+      attend: false,
+      run: () => { craft.poses.perform(clips[Math.floor(Math.random() * clips.length)], chosen.seconds ?? move.seconds); },
+    };
+  };
+
   let last: Move | null = null;
 
   const match = (heard: string): Command | null => {
@@ -417,5 +484,5 @@ export function createCommands(craft: Stagecraft): Commands {
     return null;
   };
 
-  return { match, get able() { return able.map((m) => m.id); } };
+  return { match, suggest, get able() { return able.map((m) => m.id); } };
 }

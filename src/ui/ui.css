@@ -700,6 +700,21 @@ body.ready #talk { opacity: 1; }
   border: 1px dashed var(--edge-strong);
   border-radius: var(--radius);
 }
+/* A line of state rather than an absence of one: the mood panel saying where he
+   has got to. `.empty` is the dashed box for "nothing here yet", and putting a
+   live reading in one reads as a hole in the interface. */
+.reading {
+  text-align: center;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.4;
+  padding: 2px 14px 7px;
+}
+.reading b {
+  color: var(--ink);
+  font-weight: 620;
+}
+
 .empty code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12.5px;

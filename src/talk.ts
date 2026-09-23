@@ -19,7 +19,7 @@ import { createEars, canListen, type Ears } from './listen';
 import { createMic, type Mic } from './mic';
 import { createMouth, type Mouth } from './visemes';
 import { createWave, type Wave } from './wave';
-import { moodFor, EXPRESSION_FOR, type Mood } from './mood';
+import type { Feelings, Mood } from './mood';
 import { createCommands, type Command, type Commands } from './commands';
 import { nextIntro } from './intros';
 import type { Poses } from './poses';
@@ -45,6 +45,8 @@ export interface TalkOptions {
    *  just cannot be told to do anything, and "do a dance" goes to the model
    *  like any other sentence. */
   poses?: Poses;
+  /** How he is feeling. Every exchange moves it; his face reads it. */
+  feelings: Feelings;
   /** Whether the scene he is standing in has a floor to walk on. Asked when a
    *  conversation ends, rather than assuming the answer is yes: a studio
    *  backdrop is one room he must not stroll out of. */
@@ -66,7 +68,7 @@ export interface Conversation {
   heard: Mic;
   /** The bottom-of-screen level meter, drawn from the render loop. */
   wave: Wave | null;
-  /** What the last exchange put him in. Drives which idle he falls into. */
+  /** What he is feeling right now, as a word. Drives which idle he falls into. */
   readonly mood: Mood;
   /** Orders he can take, resolved against the clips this export shipped. */
   readonly commands: Commands | null;
@@ -77,7 +79,7 @@ export interface Conversation {
 const ATTEND_DEG = 90;
 
 export function createConversation(opts: TalkOptions): Conversation {
-  const { endpoint, persona, face, alive, colin, wander, camera } = opts;
+  const { endpoint, persona, face, alive, colin, wander, camera, feelings } = opts;
   const canWander = opts.canWander ?? (() => true);
 
   /* WHAT HE CAN BE TOLD TO DO, resolved against the clips that actually
@@ -93,7 +95,16 @@ export function createConversation(opts: TalkOptions): Conversation {
     : null;
   if (commands) console.log(`commands — he can be told to: ${commands.able.join(', ')}`);
 
-  const brain = createBrain(endpoint, persona);
+  const brain = createBrain(endpoint, persona, () => ({
+    mood: {
+      feeling: feelings.label,
+      // Rounded, because two decimal places of a guess is a false precision and
+      // this ends up in a prompt.
+      valence: Math.round(feelings.valence * 10) / 10,
+      energy: Math.round(feelings.energy * 10) / 10,
+      ...(feelings.topic ? { on_his_mind: feelings.topic } : {}),
+    },
+  }));
   const voice = createVoice(endpoint, persona);
   const ears = createEars();
   const listen = createMic();
@@ -128,8 +139,6 @@ export function createConversation(opts: TalkOptions): Conversation {
   say?.addEventListener('click', () => showCaptions(false));
   chip?.addEventListener('click', () => showCaptions(!captionsOn));
   showCaptions(captionsOn);
-
-  let mood: Mood = 'neutral';
 
   // Held from the moment a sentence is heard until the last sample has played:
   // this is what stops him wandering off and what turns him to face you.
@@ -205,6 +214,60 @@ export function createConversation(opts: TalkOptions): Conversation {
   };
 
   /**
+   * What an exchange did to him, and what it might make him do about it.
+   *
+   * ONE PLACE FOR BOTH, because they are the same event: the words moved the
+   * mood and the same words may have reminded him of dancing. Called for
+   * ordinary answers and for orders alike — being told to twerk is still
+   * something that happened to him.
+   */
+  const SURPRISE = 0.35;
+  /** The shortest gap between two things he does unasked. Without it a
+   *  conversation about music is a man who never stops dancing, and the effect
+   *  that was charming once an exchange is exhausting four times running. */
+  const REACTION_GAP = 38;
+  let lastReaction = -Infinity;
+  /** Held until he has finished the sentence. Breaking into a dance mid-word is
+   *  the one timing that makes it look like a bug rather than a thought. */
+  let pending: Command | null = null;
+
+  const felt = (heard: string, reply: string) => {
+    const move = feelings.react(heard, reply);
+    wander.moodIdle = feelings.label;
+    /* A big jump gets a beat on the face straight away. The sustained feeling
+       arrives over the best part of a second — which is right for a mood and
+       too slow to read as a reaction to the thing just said. */
+    const jolt = Math.abs(move.after.valence - move.before.valence)
+      + Math.abs(move.after.energy - move.before.energy) * 0.6;
+    if (jolt > SURPRISE) {
+      alive?.express(move.after.valence > move.before.valence ? 'amused' : 'surprised', 1.4);
+      alive?.blinkNow();
+    }
+    if (move.cues.length) {
+      console.log(`felt — ${move.cues.join(', ')} · `
+        + `mood ${move.after.valence.toFixed(2)} energy ${move.after.energy.toFixed(2)} (${feelings.label})`);
+    }
+
+    /* And whether any of it gave him an idea. Not while something else is
+       already driving him — interrupting a held pose to dance is the app
+       fighting whoever set it. */
+    if (pending || opts.poses?.driving) return;
+    if (performance.now() - lastReaction < REACTION_GAP * 1000) return;
+    const idea = commands?.suggest(heard, reply);
+    if (idea) { pending = idea; lastReaction = performance.now(); }
+  };
+
+  /** A held idea, once the floor is his. */
+  const actOnIt = () => {
+    if (!pending) return;
+    const idea = pending;
+    pending = null;
+    if (opts.poses?.driving) return;
+    console.log(`unprompted — ${idea.id}`);
+    idea.run();
+  };
+
+  /**
    * An order, carried out on the spot.
    *
    * THE MODEL NEVER SEES IT. It cannot move him, so asking it to do a dance
@@ -232,6 +295,10 @@ export function createConversation(opts: TalkOptions): Conversation {
     cmd.run();
     alive?.express(cmd.dodged ? 'doubtful' : 'amused', 4);
     alive?.blinkNow();
+    /* After the move, so a reaction cannot fire on top of the thing he was
+       actually told to do — `felt` checks whether something is already driving
+       him, and by now it is. */
+    felt(heard, cmd.quip);
 
     await voice.arm();
     const spoke = await voice.speak(cmd.quip);
@@ -307,15 +374,14 @@ export function createConversation(opts: TalkOptions): Conversation {
 
     if (!reply) { engage(false); ears.unmute(); return; }
 
-    /* What the exchange did to him. Read off both halves — what you said and
-       what he answered — so a flat reply to a sharp remark still lands. It only
-       chooses an idle and an expression today; the point is that the hook is in
-       one place for when there is a fighting stance to put behind it. */
-    mood = moodFor(heard, reply);
-    wander.moodIdle = mood;
-    alive?.express(EXPRESSION_FOR[mood], 6);
-    // People blink as they start to speak, near enough always.
+    /* The thinking face was held for the whole round trip — `express` was given
+       thirty seconds precisely because nobody knows how long the model will
+       take — and it is over now. Clearing it has to happen BEFORE the exchange
+       is felt, so that a reaction sharp enough to earn a beat of its own lands
+       on top rather than being wiped by this. */
     alive?.express('neutral', 0);
+    felt(heard, reply);
+    // People blink as they start to speak, near enough always.
     alive?.blinkNow();
 
     const started = await speech.started;
@@ -346,6 +412,8 @@ export function createConversation(opts: TalkOptions): Conversation {
     // just hands hearing back.
     if (!ears.listening) openEars();
     else ears.unmute();
+    // And now, if something he said reminded him of something.
+    actOnIt();
   };
 
   ears.onPartial = (text) => {
@@ -434,7 +502,7 @@ export function createConversation(opts: TalkOptions): Conversation {
 
   return {
     update, brain, voice, ears, mouth, wave, heard: listen, commands,
-    get mood() { return mood; },
+    get mood() { return feelings.label; },
     say: (text: string) => { route(text); },
     get listening() { return listening; },
   };

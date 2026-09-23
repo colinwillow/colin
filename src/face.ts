@@ -130,6 +130,25 @@ export interface AliveConfig {
   gazeMax: number;
   /** How much the brows drift. Small — this is meant to be felt, not seen. */
   brow: number;
+  /**
+   * How hard the mood shows on his face, 0–2.
+   *
+   * ABOVE ONE ON PURPOSE. The brow shapes on this rig are far subtler than the
+   * mouth ones — measured across a rendered frame, a full smile changes 19% of
+   * the pixels on his face and a full brow drop changes 12% — so at the
+   * authored weights a strong mood came out as a clear grin and two kinds of
+   * almost-nothing. Cross and sad were the same face, which defeats the point
+   * of having two axes at all.
+   *
+   * What this actually buys is the MIDDLE of the range: a half-felt mood at 1.0
+   * moves the brows by an amount you can measure and cannot see. The strongest
+   * shapes clip at the extremes, which is the right trade — a maxed-out mood
+   * ought to look maxed out.
+   *
+   * Turn it down if he starts gurning. At 0 his face stops carrying the mood
+   * at all, which is what this looked like before.
+   */
+  feeling: number;
 }
 
 export const DEFAULT_ALIVE: AliveConfig = {
@@ -140,6 +159,7 @@ export const DEFAULT_ALIVE: AliveConfig = {
   gazeMin: 1.1,
   gazeMax: 3.4,
   brow: 0.18,
+  feeling: 1.5,
 };
 
 /** A blink, start to finish. Fast down, slightly slower up — the shut is almost
@@ -159,6 +179,15 @@ export interface Alive {
   express: (name: ExpressionName, seconds?: number) => void;
   /** Blink now — used when he starts speaking, which is when people do. */
   blinkNow: () => void;
+  /**
+   * How he is feeling, held under everything else. See mood.ts for the axes.
+   *
+   * The difference from `express` is the whole point: an expression is a beat
+   * and this is a state. A face that only ever does two-second expressions and
+   * returns to dead level between them is a face nobody is behind — a mood has
+   * to still be on him while he is talking about something else.
+   */
+  setFeeling: (valence: number, energy: number) => void;
 }
 
 export type ExpressionName = 'neutral' | 'thinking' | 'amused' | 'doubtful' | 'surprised' | 'listening';
@@ -179,6 +208,58 @@ const EXPRESSIONS: Record<ExpressionName, Record<string, number>> = {
   listening: { Brow_Raise_Inner_L: 0.22, Brow_Raise_Inner_R: 0.22 },
 };
 
+/**
+ * The four corners of the mood plane, plus the middle of its top edge.
+ *
+ * Bilinear between them, so every pair of numbers lands somewhere on a real
+ * face rather than on one of five presets: half a smile is half of these
+ * weights, and pleased-but-tired is genuinely between the grin and the small
+ * warm one instead of being either.
+ *
+ * SAD AND CROSS ARE THE SAME UNHAPPINESS AT DIFFERENT ENERGIES, which is the
+ * reason for two axes and the reason these are corners rather than a list. The
+ * brows do most of it in both, in opposite directions: down and together is
+ * angry, and the inner ends lifted is the one shape that reads as sad on
+ * anybody.
+ */
+const FEELING_FACE: Record<'happy' | 'warm' | 'cross' | 'low' | 'alert', Record<string, number>> = {
+  // valence up, energy up — the whole face is in it.
+  happy: {
+    Mouth_Smile_L: 0.85, Mouth_Smile_R: 0.85, Mouth_Smile_Sharp_L: 0.35, Mouth_Smile_Sharp_R: 0.35,
+    Cheek_Raise_L: 0.8, Cheek_Raise_R: 0.8, Eye_Squint_L: 0.42, Eye_Squint_R: 0.42,
+    Brow_Raise_Outer_L: 0.25, Brow_Raise_Outer_R: 0.25,
+  },
+  // valence up, energy down — pleased, and not making a thing of it.
+  warm: {
+    Mouth_Smile_L: 0.42, Mouth_Smile_R: 0.42, Cheek_Raise_L: 0.32, Cheek_Raise_R: 0.32,
+    Eye_Squint_L: 0.18, Eye_Squint_R: 0.18,
+  },
+  // valence down, energy up — cross. The mouth is pressed rather than frowning:
+  // a big frown on a man mid-sentence reads as a pantomime, and the brows are
+  // what anybody actually reads anger off.
+  cross: {
+    Brow_Drop_L: 0.95, Brow_Drop_R: 0.95, Brow_Compress_L: 0.85, Brow_Compress_R: 0.85,
+    Eye_Squint_L: 0.45, Eye_Squint_R: 0.45, Mouth_Press_L: 0.6, Mouth_Press_R: 0.6,
+    Mouth_Frown_L: 0.3, Mouth_Frown_R: 0.3,
+  },
+  // valence down, energy down — sad, and the lids carry some of it.
+  low: {
+    Mouth_Frown_L: 0.75, Mouth_Frown_R: 0.75,
+    Brow_Raise_Inner_L: 0.85, Brow_Raise_Inner_R: 0.85,
+    Brow_Drop_L: 0.15, Brow_Drop_R: 0.15, Eye_Blink_L: 0.22, Eye_Blink_R: 0.22,
+  },
+  // Neither way in particular, but wound up: wide and watchful.
+  alert: {
+    Brow_Raise_Inner_L: 0.5, Brow_Raise_Inner_R: 0.5,
+    Brow_Raise_Outer_L: 0.6, Brow_Raise_Outer_R: 0.6,
+  },
+};
+
+/** Seconds for the face to get most of the way to a new feeling. Slow enough
+ *  that nothing snaps when the slider moves, fast enough that a remark lands
+ *  while the sentence after it is still going. */
+const FEELING_EASE = 0.75;
+
 const rand = (lo: number, hi: number) => lo + Math.random() * (hi - lo);
 
 export function createAlive(config: AliveConfig = { ...DEFAULT_ALIVE }): Alive {
@@ -196,6 +277,14 @@ export function createAlive(config: AliveConfig = { ...DEFAULT_ALIVE }): Alive {
   let expression: ExpressionName = 'neutral';
   let expressionFor = 0;
   const browPhase = [Math.random() * 10, Math.random() * 10];
+
+  /** Where the feeling is going, and where the face has got to. */
+  let wantValence = 0;
+  let wantEnergy = 0;
+  let feltValence = 0;
+  let feltEnergy = 0;
+  /** Reused every frame; this runs in the render loop. */
+  const blended = new Map<string, number>();
 
   const pickGaze = () => {
     /* Mostly small, occasionally not. Eyes at rest make tiny saccades around
@@ -254,6 +343,32 @@ export function createAlive(config: AliveConfig = { ...DEFAULT_ALIVE }): Alive {
     }
     for (const [name, v] of Object.entries(EXPRESSIONS[expression])) face.want(name, v);
 
+    /* --- and the feeling underneath all of it ---
+       Written every frame, after the transient expression and before the brow
+       drift, so that `want`'s highest-bidder rule leaves a deliberate beat on
+       top of a mood rather than the mood erasing it. */
+    const k = 1 - Math.pow(0.02, dt / FEELING_EASE);
+    feltValence += (wantValence - feltValence) * k;
+    feltEnergy += (wantEnergy - feltEnergy) * k;
+    blended.clear();
+    const pos = Math.max(0, feltValence);
+    const neg = Math.max(0, -feltValence);
+    const up = (feltEnergy + 1) / 2;
+    const mix = (pose: Record<string, number>, weight: number) => {
+      if (weight <= 0.004) return;
+      for (const [name, v] of Object.entries(pose)) {
+        blended.set(name, (blended.get(name) ?? 0) + v * weight);
+      }
+    };
+    mix(FEELING_FACE.happy, pos * up);
+    mix(FEELING_FACE.warm, pos * (1 - up));
+    mix(FEELING_FACE.cross, neg * up);
+    mix(FEELING_FACE.low, neg * (1 - up));
+    // Only where he is not clearly one way or the other: a grin does not also
+    // need startled brows on top of it.
+    mix(FEELING_FACE.alert, (1 - Math.abs(feltValence)) * Math.max(0, feltEnergy));
+    for (const [name, v] of blended) face.want(name, Math.min(1, v * config.feeling));
+
     /* Two slow sine waves at different rates, which never line up, so the brows
        are never quite still and never obviously cycling. */
     browPhase[0] += dt * 0.37;
@@ -270,5 +385,9 @@ export function createAlive(config: AliveConfig = { ...DEFAULT_ALIVE }): Alive {
     lookAt: (x, y = 0) => { held = x === null ? null : { x, y }; if (x === null) pickGaze(); },
     express: (name, seconds = 2.5) => { expression = name; expressionFor = seconds; },
     blinkNow: () => { if (blinking < 0) { blinking = 0; doubleBlink = false; } },
+    setFeeling: (valence, energy) => {
+      wantValence = Math.max(-1, Math.min(1, valence));
+      wantEnergy = Math.max(-1, Math.min(1, energy));
+    },
   };
 }

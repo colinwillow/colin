@@ -25,7 +25,11 @@ export interface Brain {
 /** The proxy is stateless, so trimming here is what bounds the token bill. */
 const MAX_TURNS = 24;
 
-export function createBrain(endpoint: string, persona?: string): Brain {
+/** What is true about him right now, sent with every turn. The Worker decides
+ *  what to do with it; the page's job is only to say what is so. */
+export type StateOf = () => Record<string, unknown>;
+
+export function createBrain(endpoint: string, persona?: string, stateOf?: StateOf): Brain {
   const log: { role: 'user' | 'assistant'; content: string }[] = [];
   let busy = false;
 
@@ -41,9 +45,12 @@ export function createBrain(endpoint: string, persona?: string): Brain {
         body: JSON.stringify({
           messages: log,
           persona: persona || undefined,
-          // What is on screen while it answers, so it does not have to be told
-          // where it is every turn.
-          state: { room: true, figure: { who: 'colin', model: 'colin' } },
+          /* What is on screen while it answers, so it does not have to be told
+             where it is every turn — and, now, HOW HE IS. Four insults in a row
+             leave him cross, and a model that cannot see that writes the same
+             breezy line it would have written first thing. Extra keys are the
+             Worker's to use or ignore; it has never needed this one to answer. */
+          state: { room: true, figure: { who: 'colin', model: 'colin' }, ...stateOf?.() },
         }),
       });
       if (!res.ok || !res.body) {

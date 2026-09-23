@@ -9,6 +9,7 @@ import type { Conversation } from '../talk';
 import type { Stage } from '../stage';
 import type { ShotDirector } from '../shot';
 import type { Poses } from '../poses';
+import type { Feelings } from '../mood';
 import type { Wardrobe } from '../wardrobe';
 import type { Camera } from '../photos';
 import type { Toon } from '../toon';
@@ -25,6 +26,9 @@ export interface UiContext {
   stage: Stage;
   shots: ShotDirector;
   poses: Poses;
+  /** How he is feeling, as two numbers with inertia. The Mood screen drives it
+   *  by hand; the conversation drives it by itself. */
+  feelings: Feelings;
   wardrobe: Wardrobe;
   camera: Camera;
   /** The cel-shading experiment. `toon.config.amount` is the whole switch. */
