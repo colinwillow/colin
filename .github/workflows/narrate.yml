@@ -85,7 +85,7 @@ jobs:
       - name: Build the readings
         run: |
           shopt -s nullglob
-          for job in .narration-jobs/*.json; do
+          for job in .narration-jobs/*.job.json; do
             node .github/scripts/run-align.mjs "$job"
           done
 

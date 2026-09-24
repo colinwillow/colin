@@ -119,13 +119,17 @@ for audio, text in pairs:
         print(f"{audio.name}: nothing heard — is the recording silent?")
         continue
 
-    stem = JOBS / slug
-    (stem.with_suffix(".words.json")).write_text(json.dumps({"segments": [{"words": words}]}))
+    # A distinct extension, because the shell picks these up with a glob and
+    # both files used to end in `.json` — so the word timings were handed to the
+    # builder as if they were a job, and it ran with every argument empty.
+    words_file = JOBS / f"{slug}.words.json"
+    job_file = JOBS / f"{slug}.job.json"
+    words_file.write_text(json.dumps({"segments": [{"words": words}]}))
     title = re.sub(r"[_-]+", " ", NOISE.sub("", text.stem)).strip().title()
-    (stem.with_suffix(".json")).write_text(json.dumps({
+    job_file.write_text(json.dumps({
         "audio": str(audio),
         "text": str(text),
-        "words": str(stem.with_suffix(".words.json")),
+        "words": str(words_file),
         "id": slug,
         "title": title,
     }))

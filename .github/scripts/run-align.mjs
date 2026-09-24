@@ -7,6 +7,14 @@ import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
 const job = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+/* Loudly, because the way this went wrong was quiet: handed the wrong file, it
+   built a command line with every argument empty and the failure came back from
+   three layers down as a stack trace about child_process. */
+const missing = ['audio', 'text', 'words', 'id', 'title'].filter((k) => !job[k]);
+if (missing.length) {
+  console.error(`${process.argv[2]} is not a job file — no ${missing.join(', ')}`);
+  process.exit(1);
+}
 console.log(`baking ${job.id} — "${job.title}"`);
 execFileSync('node', [
   'scripts/align-narration.mjs',
