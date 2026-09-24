@@ -46,6 +46,21 @@ def key(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", name.lower())
 
 
+def title_of(text: pathlib.Path) -> str:
+    """A heading on the first line wins.
+
+    Otherwise the title comes from the filename, and a filename is a poor place
+    to keep a title — it cannot hold a colon or an apostrophe, and renaming it
+    to fix the title changes the address of the reading. A `# Like This` on the
+    first line of the text is somewhere to say it properly.
+    """
+    try:
+        first = text.read_text(encoding="utf-8").lstrip().splitlines()[0].strip()
+    except (OSError, IndexError):
+        return ""
+    return first.lstrip("#").strip() if first.startswith("#") else ""
+
+
 audios = [p for p in sorted(ESSAYS.glob("*")) if p.suffix.lower() in AUDIO]
 texts = [p for p in sorted(ESSAYS.glob("*")) if p.suffix.lower() in TEXT]
 
@@ -99,9 +114,13 @@ model = WhisperModel("small", device="cpu", compute_type="int8")
 JOBS.mkdir(exist_ok=True)
 made = 0
 for audio, text in pairs:
-    # Named after the two of them together rather than after the recording, so
-    # "essay_test_audio.mp3" does not become a reading called "Essay Test Audio".
-    slug = re.sub(r"[^a-z0-9]+", "-", key(text.stem) or key(audio.stem)).strip("-")
+    # Named after the TEXT rather than the recording, so "essay_test_audio.mp3"
+    # does not become a reading called "Essay Test Audio" — but through `NOISE`
+    # rather than through `key`, which throws the separators away along with
+    # everything else it is comparing across and made "essay_test" into
+    # "essaytest".
+    base = NOISE.sub("", text.stem) or NOISE.sub("", audio.stem)
+    slug = re.sub(r"[^a-z0-9]+", "-", base.lower()).strip("-")
     if (OUT / f"{slug}.json").exists() and not force:
         print(f"{audio.name}: already made, skipping (use the Force option to redo)")
         continue
@@ -125,7 +144,7 @@ for audio, text in pairs:
     words_file = JOBS / f"{slug}.words.json"
     job_file = JOBS / f"{slug}.job.json"
     words_file.write_text(json.dumps({"segments": [{"words": words}]}))
-    title = re.sub(r"[_-]+", " ", NOISE.sub("", text.stem)).strip().title()
+    title = title_of(text) or re.sub(r"[_-]+", " ", base).strip().title()
     job_file.write_text(json.dumps({
         "audio": str(audio),
         "text": str(text),
