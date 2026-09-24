@@ -6,7 +6,9 @@
 #   essays/my-essay.mp3   what you read out
 #   essays/my-essay.txt   the words you read
 #
-# The names have to match. This notices, works out when every word was spoken,
+# The names only have to be CLOSE — `essay_test_audio.mp3` finds `essay_test.txt`,
+# and if there is one of each it pairs them whatever they are called. This
+# notices, works out when every word was spoken,
 # writes the audio and the timings into `public/narration/`, and commits them —
 # which makes Pages rebuild, which puts it on the site. Nothing to install and
 # nothing to run.

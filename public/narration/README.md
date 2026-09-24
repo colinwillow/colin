@@ -11,7 +11,24 @@ something that only had to happen once.
       separation/
         001.mp3 002.mp3 … the audio, in parts
 
-## Making one
+## Making one from a phone
+
+Put the recording and the words in `essays/` and push. That is all of it — the
+`Bake a reading` workflow does the rest and commits the result, which makes the
+site rebuild.
+
+    essays/my-essay.mp3    what you read out
+    essays/my-essay.txt    the words you read
+
+The names only have to be close: `my-essay-audio.mp3` finds `my-essay.txt`, and
+if there is one recording and one text it pairs them whatever they are called.
+If it cannot find the words for a recording it fails and says so, rather than
+going green having done nothing — which is what it did the first time.
+
+*Actions → Bake a reading → Run workflow* redoes one by hand, with a **Force**
+box for re-doing one that already exists.
+
+## Making one from a machine
 
 ```bash
 # from the voice engine. --dry spends nothing and tells you what the real run costs.
