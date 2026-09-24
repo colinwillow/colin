@@ -186,7 +186,12 @@ if (!duration) {
    nothing. A silent face over a perfectly good recording is a confusing thing
    to be handed, so this stops instead. */
 const spoken = (opt('text', '') || (textFile && existsSync(textFile) ? readFileSync(textFile, 'utf8') : '')
-  || words.map((w) => w.word).join(' ')).replace(/\s+/g, ' ').trim();
+  || words.map((w) => w.word).join(' '))
+  // A heading on the first line is the reading's TITLE, not part of it — see
+  // title_of in the workflow's aligner. Left in, it is counted and read out.
+  .replace(/^\s*#{1,6}[^\n]*\n/, ' ')
+  .replace(/\s+/g, ' ')
+  .trim();
 if (!spoken) {
   console.log('nothing to move his mouth with. Give it the words as well as the audio:');
   console.log('  …align-narration.mjs reading.mp3 passage.txt');
