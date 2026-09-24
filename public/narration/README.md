@@ -25,6 +25,11 @@ if there is one recording and one text it pairs them whatever they are called.
 If it cannot find the words for a recording it fails and says so, rather than
 going green having done nothing — which is what it did the first time.
 
+**Put the title on the first line as a heading** — `# Art Has Two Lives`. A
+filename is a poor place for a title: it cannot hold a colon or an apostrophe,
+and renaming it to fix the title changes the address of the reading. The heading
+is not counted as something he read out.
+
 *Actions → Bake a reading → Run workflow* redoes one by hand, with a **Force**
 box for re-doing one that already exists.
 
