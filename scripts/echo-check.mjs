@@ -1,19 +1,21 @@
 // Does he hear himself?
 //
 // He did. The symptom was him answering as though he were being repeated back
-// at himself, and there were two causes: the meter's microphone stream asked
-// for audio with the echo canceller OFF — which on a page with one audio
-// session takes it off the speech recogniser too — and the timing gates around
-// his own speech assumed recognition hands over an utterance promptly, which it
+// at himself, and the timing gates around his own speech were never going to
+// stop it: they assume recognition hands over an utterance promptly, and it
 // does not.
 //
-// So there are two halves here, and the second matters more:
+// Turning the browser's echo canceller on for the meter's stream was tried and
+// REVERSED — it took the meter with it, because asking for cancellation puts
+// the capture through a voice-processing chain that brings its own gating and
+// gain whatever the other flags say, and those are the two things a meter
+// exists to draw. So the constraints are checked here for the opposite reason
+// they used to be: all three off, because all three flatten or gate what is
+// being measured.
 //
-//   1. The stream asks for echo cancellation. One assertion, and it is the
-//      difference between a hard problem and no problem.
-//   2. HIS OWN WORDS ARE RECOGNISED AND DROPPED even when they arrive as
-//      recognition mangled them, seconds after he stopped. That is the one that
-//      holds on a browser whose canceller does not.
+// Which leaves ONE defence, and it is the one that was always going to have to
+// work: HIS OWN WORDS ARE RECOGNISED AND DROPPED, even when they arrive as
+// recognition mangled them, seconds after he stopped.
 //
 // And the risk that comes with the second: a filter in front of the model is a
 // filter that can eat real speech. The rejection table is the important half of
@@ -124,9 +126,13 @@ await page.locator('#intro button.action').click({ timeout: 8000 });
 await page.waitForFunction(() => window.talk.ears.listening, null, { timeout: 40000 });
 const constraints = await page.evaluate(() => window.__constraints);
 console.log(`  asked for ${JSON.stringify(constraints?.audio)}`);
-ok(constraints?.audio?.echoCancellation === true, 'echo cancellation is on');
-ok(constraints?.audio?.autoGainControl === false, 'automatic gain is still off — it flattens the meter');
-ok(constraints?.audio?.noiseSuppression === false, 'noise suppression is still off, same reason');
+/* All three off. Cancellation was on here for one commit and the meter went
+   silent on a real phone — nothing in this file could have caught that, which
+   is why the assertion now records the decision rather than pretending to
+   verify the audio. */
+ok(constraints?.audio?.echoCancellation === false, 'echo cancellation is off — it took the meter with it');
+ok(constraints?.audio?.autoGainControl === false, 'automatic gain is off — it flattens the meter');
+ok(constraints?.audio?.noiseSuppression === false, 'noise suppression is off, same reason');
 
 // --- 2. his own words, coming back ---
 const greeting = await page.evaluate(() => window.talk.brain.log.at(-1)?.content ?? '');

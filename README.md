@@ -697,14 +697,21 @@ He did, and the symptom was unmistakable: he answered as if he were being
 repeated back at himself. Two causes, and the second is the one worth writing
 down.
 
-**The meter's microphone stream asked for the echo canceller to be off.** All
-three constraints were switched off together on the grounds that all three are
-"processing" — and that was wrong. Noise suppression and AGC act on *your*
-voice, which is what the meter is drawing, so they stay off. Echo cancellation
-subtracts the audio the page is *playing*, which is a different job and does
-nothing to anybody's dynamics. And it is not local: iOS runs one audio session
-for the whole page, so one un-cancelled capture takes the canceller off the
-speech recogniser too. One flag.
+**Turning the browser's echo canceller on for the meter's stream was tried and
+reversed.** The reasoning was sound — iOS runs one audio session for the whole
+page, so an un-cancelled capture anywhere takes the canceller off the speech
+recogniser too — and it still had to come out, because **the meter stopped
+reading a voice the moment it went on.** Same phone, same room, lines that had
+been moving for days and then were not.
+
+Which is not surprising in hindsight. Asking for cancellation puts the capture
+through the platform's voice-processing chain, and that chain is not three
+independent switches: it brings its own gating and its own gain control whatever
+the other two flags say. Those are the two things the meter exists to draw. So
+all three are off, and *More → Microphone* now shows what the browser actually
+applied and what it is hearing right now — because a meter that has gone quiet
+is either a silent room or a broken capture, and from the outside those look
+identical.
 
 **The timing gates alone were never going to hold**, whatever the canceller
 does. They assume recognition hands over an utterance promptly, and it does not
@@ -828,11 +835,11 @@ fixed floor throw the entire voice away.
 
 Two consequences worth knowing:
 
-- **The microphone asks for RAW audio, except for the echo canceller** — noise
-  suppression and automatic gain are off, because both flatten exactly the
-  dynamics being drawn and AGC in particular pushes a whisper and a shout to the
-  same level. What makes raw usable is the moving floor. Echo cancellation is
-  on, and used not to be; see *When he hears himself* above for what that cost.
+- **The microphone asks for RAW audio** — all three of echo cancellation, noise
+  suppression and automatic gain are off, because every one of them flattens or
+  gates exactly the dynamics being drawn. What makes raw usable is the moving
+  floor. Cancellation was on for one commit; see *When he hears himself* for
+  what that cost and what handles the echo instead.
 - **Both analysers are read every frame**, whoever is talking. An analyser that
   is not being drawn still has to keep its history moving, or the floor restarts
   from nothing at every change of turn and the first second of every sentence is

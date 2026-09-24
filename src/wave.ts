@@ -92,6 +92,11 @@ export interface Wave {
   /** Call when the recogniser hears something. Only does anything when there is
    *  no microphone to read instead. */
   heard: () => void;
+  /** What YOUR microphone is reading right now — level, the room's own floor,
+   *  the lot. Exposed so the device can show it: a meter that has gone quiet is
+   *  either a silent room or a broken capture, and from the outside those look
+   *  exactly the same. */
+  readonly features: Features;
 }
 
 /** Eight sub-bands per line, three lines. The eight are what makes a line
@@ -283,6 +288,8 @@ export function createWave(canvas: HTMLCanvasElement, sources: WaveSources): Wav
     update,
     meter,
     setPalette,
+    // Yours, not his: this is for answering "is it hearing me".
+    get features() { return mine.features; },
     heard: () => { meter.energy = Math.min(1, meter.energy + 0.5); },
   };
 }
