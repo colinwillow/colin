@@ -67,16 +67,19 @@ export const readings = (ctx: UiContext): Screen => {
       }
 
       const row = el('div.scroll', {}, ...list.map((r) =>
-        button(`tile.glass${ctx.narration.reading?.id === r.id ? '.on' : ''}`,
+        button(`tile.wide.glass${ctx.narration.reading?.id === r.id ? '.on' : ''}`,
           () => { void ctx.narration.play(r.id).then(() => ctx.shell.refresh()); ctx.shell.refresh(); },
           el('div.swatch', {}, icon('read', 20)),
           el('div.label', {}, r.title))));
 
       const now = ctx.narration.reading;
       if (!now) {
+        // On a surface, like the empty state: a line of pale text floating over
+        // his legs is not a line of text.
         return el('div', { style: 'display:grid;gap:9px' },
           row,
-          el('div.reading', {}, 'Pick one. It carries on if you go and look at him.'));
+          el('div.glass', { style: 'border-radius:19px;padding:9px 2px' },
+            el('div.reading', {}, 'Pick one. It carries on if you go and look at him.')));
       }
 
       const scrub = el('div.glass', { style: 'border-radius:19px;padding:4px 2px' },

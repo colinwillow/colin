@@ -53,6 +53,48 @@ const ID = opt('id', basename(audioFile, extname(audioFile)).toLowerCase().repla
  *  the decoded audio never adds up. */
 const PART_SECONDS = Number(opt('seconds', 45));
 
+/**
+ * How long an MP3 is, by walking its frames.
+ *
+ * ffprobe knows this and ffprobe is not installed on most machines, which is a
+ * silly reason for the whole thing to stop — so the frames are counted here.
+ * Every MP3 frame header carries its own bitrate and sample rate, and every
+ * frame is a fixed number of samples, so the length is the sum of the frames
+ * and it is exact for a variable-bitrate file as well as a constant one.
+ *
+ * Null for anything that is not an MP3, which falls back to ffprobe and then to
+ * --duration.
+ */
+function mp3Seconds(file) {
+  let buf;
+  try { buf = readFileSync(file); } catch { return null; }
+  let i = 0;
+  // An ID3v2 tag sits in front of the audio and its size is seven bits a byte.
+  if (buf.length > 10 && buf.toString('latin1', 0, 3) === 'ID3') {
+    i = 10 + ((buf[6] & 0x7f) << 21 | (buf[7] & 0x7f) << 14 | (buf[8] & 0x7f) << 7 | (buf[9] & 0x7f));
+  }
+  const V1 = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0];
+  const V2 = [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0];
+  const RATES = { 3: [44100, 48000, 32000], 2: [22050, 24000, 16000], 0: [11025, 12000, 8000] };
+  let seconds = 0;
+  let frames = 0;
+  while (i + 4 <= buf.length) {
+    if (buf[i] !== 0xff || (buf[i + 1] & 0xe0) !== 0xe0) { i++; continue; }
+    const version = (buf[i + 1] >> 3) & 3;          // 3 = MPEG1, 2 = MPEG2, 0 = MPEG2.5
+    const layer = (buf[i + 1] >> 1) & 3;            // 1 = Layer III
+    const bitrate = (version === 3 ? V1 : V2)[(buf[i + 2] >> 4) & 15] * 1000;
+    const rate = RATES[version]?.[(buf[i + 2] >> 2) & 3];
+    if (layer !== 1 || version === 1 || !bitrate || !rate) { i++; continue; }
+    const samples = version === 3 ? 1152 : 576;
+    const size = Math.floor((samples / 8) * bitrate / rate) + ((buf[i + 2] >> 1) & 1);
+    if (size < 4) { i++; continue; }
+    seconds += samples / rate;
+    frames++;
+    i += size;
+  }
+  return frames > 4 ? seconds : null;
+}
+
 const has = (cmd) => {
   try { execFileSync(cmd, ['-version'], { stdio: 'ignore' }); return true; } catch { return false; }
 };
@@ -126,6 +168,7 @@ function marksFromWords(words, from, to) {
 
 const words = flags.has('words') ? readWords(opt('words')) : [];
 let duration = Number(opt('duration', 0));
+if (!duration && /\.mp3$/i.test(audioFile)) duration = mp3Seconds(audioFile) ?? 0;
 if (!duration && FFPROBE) {
   duration = Number(execFileSync('ffprobe',
     ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1', audioFile],

@@ -224,6 +224,17 @@ body.ready #ui { opacity: 1; }
   color: var(--ink-soft);
   background: linear-gradient(160deg, #fdfaf2, #e6dcc9);
 }
+/* Wider, and two lines. The labels everywhere else are one word chosen to fit
+   — "Outfits", "Dancing" — and the readings are called whatever the essay is
+   called, which "Art Has T…" is not. */
+.tile.wide { width: 108px; }
+.tile.wide .label {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  min-height: 2.5em;
+}
 .tile .label {
   font-size: 10.5px;
   font-weight: 500;
