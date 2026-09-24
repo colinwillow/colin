@@ -29,7 +29,7 @@ import { basename, extname, join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 
 const argv = process.argv.slice(2);
-const TAKES_VALUE = ['words', 'out', 'id', 'title', 'voice', 'note', 'seconds', 'duration'];
+const TAKES_VALUE = ['words', 'text', 'out', 'id', 'title', 'voice', 'note', 'seconds', 'duration'];
 const flags = new Map();
 const bare = [];
 for (let i = 0; i < argv.length; i++) {
@@ -137,9 +137,20 @@ if (!duration) {
   process.exit(1);
 }
 
-const spoken = textFile && existsSync(textFile)
-  ? readFileSync(textFile, 'utf8').replace(/\s+/g, ' ').trim()
-  : words.map((w) => w.word).join(' ');
+/* What he actually said, from whichever of the three is there. Without ANY of
+   them there is nothing to move a mouth with: no word timings means the mouth
+   is spread over the text instead, and no text means it is spread over
+   nothing. A silent face over a perfectly good recording is a confusing thing
+   to be handed, so this stops instead. */
+const spoken = (opt('text', '') || (textFile && existsSync(textFile) ? readFileSync(textFile, 'utf8') : '')
+  || words.map((w) => w.word).join(' ')).replace(/\s+/g, ' ').trim();
+if (!spoken) {
+  console.log('nothing to move his mouth with. Give it the words as well as the audio:');
+  console.log('  …align-narration.mjs reading.mp3 passage.txt');
+  console.log('  …align-narration.mjs reading.mp3 --text "the passage you read out"');
+  console.log('  …align-narration.mjs reading.mp3 --words whisper.json   (best: real timings)');
+  process.exit(1);
+}
 
 /* Where to cut. At a sentence end near the target length when the words are
    known, because a seam at a full stop is inaudible and a seam mid-clause is
