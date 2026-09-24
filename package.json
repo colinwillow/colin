@@ -16,7 +16,10 @@
     "command-check": "node scripts/command-check.mjs",
     "mood-check": "node scripts/mood-check.mjs",
     "echo-check": "node scripts/echo-check.mjs",
-    "persona-check": "node scripts/persona-check.mjs"
+    "persona-check": "node scripts/persona-check.mjs",
+    "narration-check": "node scripts/narration-check.mjs",
+    "bake-narration": "node scripts/bake-narration.mjs",
+    "align-narration": "node scripts/align-narration.mjs"
   },
   "dependencies": {
     "three": "^0.185.0"

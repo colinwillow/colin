@@ -79,6 +79,8 @@ const PATHS: Record<string, string> = {
   shuffle: 'M4 7h3.5l9 10H20M4 17h3.5l3-3.4M14 8.6l2.5-1.6H20M17.5 4.5 20 7l-2.5 2.5M17.5 14.5 20 17l-2.5 2.5',
   hold: 'M9 5.5v13M15 5.5v13',
   play: 'M7.5 5.5 18 12 7.5 18.5z',
+  // An open book: the readings, which are the one thing in here made of words.
+  read: 'M12 7.2C10.4 5.9 8.4 5.4 5.5 5.5v11c2.9-.1 4.9.4 6.5 1.7 1.6-1.3 3.6-1.8 6.5-1.7v-11c-2.9-.1-4.9.4-6.5 1.7zM12 7.2v10.9',
   plus: 'M12 5.5v13M5.5 12h13',
   mic: 'M12 4.5a2.6 2.6 0 0 1 2.6 2.6v4.6a2.6 2.6 0 0 1-5.2 0V7.1A2.6 2.6 0 0 1 12 4.5M6.5 11.2a5.5 5.5 0 0 0 11 0M12 16.7V20',
 };
@@ -113,6 +115,17 @@ export interface SliderOptions {
   /** How the number reads. Defaults to two decimals. */
   format?: (value: number) => string;
   onInput: (value: number) => void;
+  /**
+   * On release rather than while dragging.
+   *
+   * For anything where acting on every intermediate value is wrong — seeking a
+   * reading refetches and re-decodes audio, so a drag across a twenty-minute
+   * essay would fire a hundred of them. `onInput` moves the readout, this does
+   * the work.
+   */
+  onChange?: (value: number) => void;
+  /** Read back later, to follow something that is moving on its own. */
+  ref?: (input: HTMLInputElement) => void;
 }
 
 /**
@@ -138,6 +151,12 @@ export function slider(options: SliderOptions): HTMLElement {
     readout.textContent = format(value);
     options.onInput(value);
   });
+  if (options.onChange) {
+    input.addEventListener('change', () => options.onChange!(Number(input.value)));
+  }
+  /* Handed back so a caller can write to it as well as read from it — the
+     readout has to move with the value, and nothing else knows where it is. */
+  options.ref?.(Object.assign(input, { readout }) as HTMLInputElement & { readout: HTMLElement });
   return el('label.slider', {},
     el('div.cap', {}, el('span', {}, options.label), readout),
     input);

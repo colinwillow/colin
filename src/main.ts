@@ -23,6 +23,7 @@ import { createLook } from './look';
 import { samplePalette } from './palette';
 import { createPoses } from './poses';
 import { createFeelings } from './mood';
+import { createNarration } from './narration';
 import { createWardrobe } from './wardrobe';
 import { createCamera } from './photos';
 import { createInterface } from './ui';
@@ -250,6 +251,16 @@ try {
       canWander, where: () => stage?.current.place ?? '',
     },
   );
+  /* Things he reads out, which are baked rather than synthesised — see
+     narration.ts. Built after the conversation because it plays through the
+     same voice and wraps the same `onEnd`. */
+  const narration = createNarration(talk.voice, ASSETS);
+  /* A reading is twenty minutes of him talking that nobody asked a question to
+     start, so the things a reply does — stop him walking, turn him to the
+     camera, deafen him — have to be done by hand at both ends. */
+  narration.onState = (on) => talk.hold(on);
+  void narration.load();
+
   if (talk.mouth) {
     console.log(`visemes — ${talk.mouth.rig} rig, ${talk.mouth.matched.length} shapes matched`
       + (talk.mouth.missing.length ? `, missing ${talk.mouth.missing.join(', ')}` : ''));
@@ -385,6 +396,7 @@ try {
     colin, face, alive, wander, talk, stage, shots, toon, look: appearance,
     poses,
     feelings,
+    narration,
     wardrobe: createWardrobe(colin.model),
     camera: photos,
     capabilities: CAPABILITIES,
@@ -394,7 +406,7 @@ try {
 
   // Debug handles. From the devtools console: kitchen.interactive.Fridge_Door,
   // kitchen.lightmapped[0].lightMapIntensity, new THREE.Raycaster(), ...
-  Object.assign(window, { renderer, kitchen, colin, wander, rig, face, alive, talk, roomLights, THREE, stage, shots, toon, ground, look: appearance, poses, feelings, ui });
+  Object.assign(window, { renderer, kitchen, colin, wander, rig, face, alive, talk, roomLights, THREE, stage, shots, toon, ground, look: appearance, poses, feelings, narration, ui });
 
   loading.classList.add('done');
   document.body.classList.add('ready');

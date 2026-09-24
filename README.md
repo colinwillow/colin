@@ -56,6 +56,7 @@ src/wander.ts                   walks him around the room on his own
 src/face.ts                     his face: the shape rig, blinks, gaze, expressions
 src/mood.ts                     how he is feeling: two numbers with inertia
 src/commands.ts                 being told to do something, and him doing it
+src/narration.ts                him reading something out, from audio made once
 src/wave.ts                     the level meter along the bottom
 src/talk.ts                     the conversation: ears -> brain -> voice -> mouth
 src/listen.ts                   the browser's speech recognition, and when to deafen it
@@ -903,6 +904,7 @@ npm run command-check -- http://127.0.0.1:4173/    # does he do what he is told,
 npm run mood-check -- http://127.0.0.1:4173/       # does he feel anything, and does it show
 npm run echo-check -- http://127.0.0.1:4173/       # does he hear himself, and only himself
 npm run persona-check                              # is he being the person the document says
+npm run narration-check -- http://127.0.0.1:4173/  # does he read it, and does his mouth follow
 ```
 
 `persona-check` is the odd one out: it talks to the live Worker rather than to a
@@ -1065,6 +1067,54 @@ photograph beats an adjective every time.** "It's going badly" is nothing; "the
 robot's left arm is going through his own chest" is the same sentence and it is
 funny. The document now says so, and gives him a bank of small physical things
 to be in the middle of.
+
+## Him reading something out
+
+`src/narration.ts`, and the Readings screen. A conversation has to be
+synthesised on every turn because nobody can pre-record an answer to a question
+nobody has asked. **A twenty-minute essay is the opposite** — the same words
+every time — so paying per play, in credits and in latency and in a network that
+might not be there, is paying repeatedly for something that only had to happen
+once.
+
+So a reading is **baked and committed**. `public/narration/` has the format and
+the recipes; the short version is two scripts that write the same thing:
+
+```bash
+npm run bake-narration  -- essays/separation.md --dry   # spends nothing, tells you what it would
+npm run align-narration -- reading.mp3 essays/separation.md --words whisperx.json
+```
+
+**Read them yourself.** Fifteen minutes is where a voice clone comes apart — it
+is convincing for two sentences and tiring by minute four, because the artefacts
+do not average out, they accumulate. And **the lip sync costs nothing either**,
+which is the part that looks like it must be bought: `src/visemes.ts` builds the
+mouth from characters with start and end times and does not care who produced
+them, so a forced aligner over your own recording gets the same result as the
+engine's own marks. For rough arithmetic: a 15-minute essay is about 14,000
+characters, a 20-minute one about 18,000 — spent once, if you spend it at all.
+
+**It plays through `voice.open()`**, the same queue a spoken reply goes through,
+via a `place()` that takes an already-decoded buffer instead of a string. That
+is the whole design decision in the feature: the scheduling is already
+sample-accurate across a seam, the mouth already reads the timeline, the meter
+already reads the analyser, and `onEnd` already hands the microphone back. A
+player of its own would be a second copy of all of it, drifting.
+
+**The audio is in parts, which is not a compromise.** Playback starts when the
+first forty seconds has arrived rather than when twenty minutes has; only about
+a minute is ever decoded at once, where a whole essay as PCM is a couple of
+hundred megabytes on a phone; and the seams land at paragraph breaks, where a
+breath belongs. `place()` can start a part some way in, which is what makes
+pause-and-resume land where it was rather than at the top of the paragraph.
+
+`npm run narration-check` covers it end to end — the aligner's output offline,
+then a four-part reading played in a real browser: the position tracks real
+time, the mouth moves, a pause holds, a resume carries on, a seek lands in the
+right part, and the seam passes without the audio stopping. It found one real
+bug outside this feature: `shell.refresh()` rebuilt a screen but kept the *old*
+per-frame hook, so anything following live state — a scrubber — silently wrote
+to detached DOM from the first refresh onwards.
 
 ## Lighting experiment: real lights instead of the bake
 

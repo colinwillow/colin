@@ -9,3 +9,6 @@ dist/
 # Screenshots from scripts/ui-tour.mjs and scripts/screenshot.mjs.
 .tour/
 shot.png
+
+# A scratch folder the narration check builds and removes.
+.narration-check/

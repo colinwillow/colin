@@ -72,6 +72,7 @@ const steps = [
   ['poses', async () => { await tap('.chip'); await tap('Poses'); }],
   ['poses-dancing', async () => tap('Dancing')],
   ['poses-held', async () => { await tap('Wiggle feet'); await tap('Hold'); }],
+  ['readings', async () => { await tap('.chip'); await tap('Readings'); }],
   ['mood', async () => { await tap('.chip'); await tap('Mood'); }],
   ['emotes', async () => { await tap('.chip'); await tap('Emotes'); }],
   ['look', async () => { await tap('.chip'); await tap('Look'); }],

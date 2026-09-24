@@ -75,6 +75,15 @@ export interface Conversation {
   readonly mood: Mood;
   /** Orders he can take, resolved against the clips this export shipped. */
   readonly commands: Commands | null;
+  /**
+   * Hold him still and deafen him for something that is not a reply — a
+   * reading, which is twenty minutes of him talking that no question started.
+   *
+   * The release is the same one a reply gets: the reading plays through the
+   * voice, so `voice.onEnd` hands the microphone back on its own. This is only
+   * needed for the other way out — somebody stopping it half way.
+   */
+  hold: (on: boolean) => void;
 }
 
 /** How fast he turns to face you once you have said something, in degrees per
@@ -522,6 +531,10 @@ export function createConversation(opts: TalkOptions): Conversation {
 
   return {
     update, brain, voice, ears, mouth, wave, heard: listen, commands,
+    hold: (on) => {
+      if (on) { ears.mute(); engage(true); }
+      else { engage(false); if (ears.listening) ears.unmute(); }
+    },
     get mood() { return feelings.label; },
     say: (text: string) => { route(text); },
     get listening() { return listening; },

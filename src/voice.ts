@@ -2,6 +2,7 @@
 // API key never comes near the page. Ported from the Orb/glorp project, where
 // the timing and the audio graph were worked out.
 import { timelineFromMarks, timelineFromText, shapeAt, type Alignment, type Shape, type Span } from './visemes';
+export type { Alignment } from './visemes';
 
 /** A reply is spoken a sentence at a time so the first one can start while the
  *  rest is still being rendered. The first piece is kept short because it is the
@@ -46,6 +47,21 @@ const GATE = 0.06;
 export interface Speech {
   /** Say this next. Rendered and queued in order; safe to call at any time. */
   push: (text: string) => void;
+  /**
+   * Queue something that was rendered a long time ago.
+   *
+   * A narration is baked once and committed, so there is nothing to ask the
+   * voice engine for — but everything downstream of the request is identical,
+   * and that is the point of putting it here rather than in a player of its
+   * own. The scheduling is already sample-accurate across a seam, the mouth
+   * already reads the timeline, the meter already reads the analyser, and
+   * `onEnd` already hands the microphone back. A separate path would be a
+   * second copy of all of it, drifting.
+   *
+   * `skip` starts that part some way in, which is how a paused narration
+   * resumes where it was rather than at the top of the paragraph.
+   */
+  place: (audio: AudioBuffer, marks: Alignment | null, text: string, skip?: number) => void;
   /** Nothing more is coming. `onEnd` fires once what is queued has played. */
   close: () => void;
   /** True once the first sample is scheduled, false if nothing could be said. */
@@ -234,7 +250,7 @@ export function createVoice(endpoint: string, persona?: string): Voice {
     if (!ctx || !analyser) {
       // Not armed. Nothing can be said, and saying so is better than queueing
       // into a context that does not exist.
-      return { push: () => {}, close: () => {}, started: Promise.resolve(false) };
+      return { push: () => {}, place: () => {}, close: () => {}, started: Promise.resolve(false) };
     }
 
     const t0 = ctx.currentTime + 0.05;
@@ -245,7 +261,9 @@ export function createVoice(endpoint: string, persona?: string): Voice {
      *  while more is still being written must not be the last one. */
     let expected = Infinity;
 
-    const pending: string[] = [];
+    /** Text still to render, and pieces already rendered, in one queue so that
+     *  order is order however each item got here. */
+    const pending: { text: string; piece?: Piece; skip?: number }[] = [];
     let closed = false;
     let draining = false;
     /** What he has already said, for conditioning the next request. */
@@ -266,7 +284,7 @@ export function createVoice(endpoint: string, persona?: string): Voice {
     };
     const onEnd = () => { if (mine === generation && ++ended >= expected) finish(); };
 
-    const place = (piece: Piece, text: string) => {
+    const place = (piece: Piece, text: string, skip = 0) => {
       const src = ctx!.createBufferSource();
       src.buffer = piece.audio;
       src.connect(analyser!);
@@ -276,19 +294,29 @@ export function createVoice(endpoint: string, persona?: string): Voice {
       // the visemes still on the old clock is a mouth out of sync for the rest
       // of the reply.
       const when = Math.max(ctx!.currentTime + 0.01, at);
-      src.onended = onEnd;
-      src.start(when);
+      src.onended = () => {
+        /* Dropped as it finishes, not at the end of everything. A narration is
+           twenty minutes of decoded audio and holding every buffer until `stop`
+           is a couple of hundred megabytes on a phone. */
+        const i = sources.indexOf(src);
+        if (i >= 0) sources.splice(i, 1);
+        onEnd();
+      };
+      src.start(when, skip);
       sources.push(src);
       /* Without marks the timeline is a guess from the text and the duration.
          Per piece rather than for the whole reply, because with a streamed reply
          there is no whole reply to measure against yet. */
+      /* Less `skip`, because a character a minute into the part is heard a
+         minute after the part STARTED, not a minute after it was scheduled. */
+      const shift = when - t0 - skip;
       const spans = piece.marks
-        ? timelineFromMarks(piece.marks, when - t0)
-        : timelineFromText(text, piece.audio.duration).map(
-          (span) => ({ ...span, t0: span.t0 + (when - t0), t1: span.t1 + (when - t0) }));
+        ? timelineFromMarks(piece.marks, shift)
+        : timelineFromText(text, piece.audio.duration - skip).map(
+          (span) => ({ ...span, t0: span.t0 + when - t0, t1: span.t1 + when - t0 }));
       seq = placed > 0 ? seq.concat(spans) : spans;
       placed++;
-      at = when + piece.audio.duration;
+      at = when + Math.max(0, piece.audio.duration - skip);
 
       if (placed === 1) {
         if (gain) gain.gain.value = api.volume;
@@ -306,21 +334,25 @@ export function createVoice(endpoint: string, persona?: string): Voice {
       if (draining) return;
       draining = true;
       while (pending.length) {
-        const text = pending.shift()!;
+        const item = pending.shift()!;
         let piece: Piece;
-        try {
-          piece = await render(text, said, pending[0] ?? '');
-        } catch (err) {
-          console.warn(`voice: piece ${placed + 1} failed —`, err);
-          // Give up on the rest: a failed piece mid-reply is a hole, and the
-          // ones after it would be conditioned on text he never said.
-          pending.length = 0;
-          closed = true;
-          break;
+        if (item.piece) {
+          piece = item.piece;
+        } else {
+          try {
+            piece = await render(item.text, said, pending[0]?.text ?? '');
+          } catch (err) {
+            console.warn(`voice: piece ${placed + 1} failed —`, err);
+            // Give up on the rest: a failed piece mid-reply is a hole, and the
+            // ones after it would be conditioned on text he never said.
+            pending.length = 0;
+            closed = true;
+            break;
+          }
         }
         if (mine !== generation) { draining = false; return; }
-        said = `${said} ${text}`.trim();
-        place(piece, text);
+        said = `${said} ${item.text}`.trim();
+        place(piece, item.text, item.skip);
       }
       draining = false;
       if (closed) {
@@ -333,7 +365,12 @@ export function createVoice(endpoint: string, persona?: string): Voice {
     return {
       push: (text) => {
         if (closed || mine !== generation) return;
-        for (const part of split(text)) pending.push(part);
+        for (const part of split(text)) pending.push({ text: part });
+        void drain();
+      },
+      place: (audio, marks, text, skip = 0) => {
+        if (closed || mine !== generation) return;
+        pending.push({ text, piece: { audio, marks }, skip });
         void drain();
       },
       close: () => {

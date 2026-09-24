@@ -11,6 +11,7 @@ import { home } from './screens/home';
 import { outfits } from './screens/outfits';
 import { poses } from './screens/poses';
 import { mood, emotes } from './screens/mood';
+import { readings } from './screens/readings';
 import { look } from './screens/look';
 import { rooms } from './screens/rooms';
 import { camera } from './screens/camera';
@@ -18,7 +19,7 @@ import { gallery } from './screens/gallery';
 import { more } from './screens/more';
 
 const SCREENS: Record<string, ScreenFactory> = {
-  stage, home, outfits, poses, mood, emotes, rooms, look, camera, gallery, more,
+  stage, home, outfits, poses, mood, emotes, rooms, look, camera, gallery, more, readings,
 };
 
 export type { UiContext } from './context';

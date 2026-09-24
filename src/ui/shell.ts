@@ -217,8 +217,15 @@ export function createShell(
     // keeping track of what changed.
     const rebuilt = screens[route](ctx);
     rebuilt.enter = undefined;   // already entered; this is the same screen
-    const { exit, update: tick } = current;
-    current = { ...rebuilt, exit, update: tick ?? rebuilt.update };
+    /* `exit` is the ORIGINAL one, because it may close over something the
+       original `enter` set up and this rebuild never ran an `enter`.
+       `update` is the REBUILT one, and that is not a detail: a per-frame hook
+       exists to write to an element — a scrubber following playback — and the
+       element it closed over was thrown away by this very rebuild. Keeping the
+       old hook leaves it writing to detached DOM for ever, which looks exactly
+       like a screen that has quietly stopped ticking. */
+    const { exit } = current;
+    current = { ...rebuilt, exit };
     render();
   }
 

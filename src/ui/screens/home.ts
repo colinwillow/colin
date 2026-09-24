@@ -3,9 +3,9 @@ import { el, icon, button } from '../dom';
 import type { UiContext } from '../context';
 import type { Screen } from '../shell';
 
-/* Four down the left, three down the right. The odd one out is deliberate: an
-   even split would put a button either side of his face at eye level, and the
-   gap is where he is. */
+/* Four down each side, and what matters is that they START below his chin:
+   the gap at the top is where his face is, and a button level with his eye is a
+   button you look at instead of him. */
 const HUB: { id: string; label: string; icon: string }[] = [
   { id: 'outfits', label: 'Outfits', icon: 'outfits' },
   { id: 'mood', label: 'Mood', icon: 'mood' },
@@ -14,6 +14,7 @@ const HUB: { id: string; label: string; icon: string }[] = [
   { id: 'poses', label: 'Poses', icon: 'poses' },
   { id: 'emotes', label: 'Emotes', icon: 'emotes' },
   { id: 'camera', label: 'Photos', icon: 'photos' },
+  { id: 'readings', label: 'Readings', icon: 'read' },
 ];
 
 /** What he is doing, in three words, under his name. */
@@ -21,6 +22,7 @@ function status(ctx: UiContext): string {
   if (ctx.talk.voice.speaking) return 'Talking';
   if (ctx.talk.brain.busy) return 'Thinking about it';
   if (ctx.talk.listening) return 'Listening';
+  if (ctx.narration.playing) return 'Reading';
   if (ctx.poses.clip) return ctx.poses.holding ? 'Holding a pose' : 'Doing a bit';
   return ctx.stage.current.kind === 'studio'
     ? `In the ${ctx.stage.current.name.toLowerCase()}`
@@ -48,7 +50,7 @@ export const home = (ctx: UiContext): Screen => {
       button('chip.glass', () => ctx.shell.go('stage'), icon('close', 19))),
 
     body: () => {
-      // Three down each side, so he is never behind a button.
+      // Four down each side, so he is never behind a button.
       const column = (items: typeof HUB) => el('div#hub', {}, ...items.map((item) =>
         button('glass', () => ctx.shell.go(item.id), icon(item.icon, 21), el('span', {}, item.label))));
       return [column(HUB.slice(0, 4)), column(HUB.slice(4))];
