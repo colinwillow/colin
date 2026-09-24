@@ -12,3 +12,6 @@ shot.png
 
 # A scratch folder the narration check builds and removes.
 .narration-check/
+
+# Job files the narration workflow passes between its two halves.
+.narration-jobs/
